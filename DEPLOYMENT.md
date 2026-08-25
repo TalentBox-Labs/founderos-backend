@@ -1,4 +1,4 @@
-# Deployment Guide — WorkCrew CRM
+# Deployment Guide — Founder OS
 
 One Docker image serves everything: the FastAPI backend, the autonomous
 heartbeat, and the React CRM UI (mounted at `/app`).

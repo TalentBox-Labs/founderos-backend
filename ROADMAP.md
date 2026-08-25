@@ -1,4 +1,4 @@
-# WorkCrew AI Founder OS — Architecture Audit & Roadmap
+# Founder OS — Architecture Audit & Roadmap
 
 Audit date: 2026-08-04 · Branch: `claude/sharp-davinci-3mbch4`
 

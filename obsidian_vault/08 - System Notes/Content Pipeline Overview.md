@@ -5,7 +5,7 @@ created: 2026-06-11
 
 # ⚡ Content Pipeline Overview
 
-This note maps every phase of the WorkCrew CMS OS content lifecycle.
+This note maps every phase of the Founder OS content lifecycle.
 
 ## Phases
 

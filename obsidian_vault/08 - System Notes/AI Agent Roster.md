@@ -5,7 +5,7 @@ created: 2026-06-11
 
 # 🤖 AI Agent Roster
 
-All CrewAI agents in the WorkCrew CMS OS.
+All CrewAI agents in Founder OS.
 
 ## Phase 2A — Generation Crew
 | Agent | Role | Config File | Output |

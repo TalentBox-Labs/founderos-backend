@@ -54,5 +54,5 @@ def clear_demo_data():
 
 
 if __name__ == "__main__":
-    print("\n🗑️  Clearing WorkCrew AI Demo Data\n")
+    print("\n🗑️  Clearing Founder OS Demo Data\n")
     clear_demo_data()

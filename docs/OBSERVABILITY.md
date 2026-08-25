@@ -1,4 +1,4 @@
-# WorkCrew CMS OS Observability Guide
+# Founder OS Observability Guide
 
 Comprehensive guide to the observability stack covering structured tracing, metrics collection, and health monitoring.
 

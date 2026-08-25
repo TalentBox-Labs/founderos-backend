@@ -36,7 +36,7 @@ export default function Login() {
       alignItems: 'center', justifyContent: 'center',
     }}>
       <div className="card" style={{ width: '420px', maxWidth: '90vw' }}>
-        <h1 style={{ marginBottom: '0.5rem' }}>WorkCrew CRM</h1>
+        <h1 style={{ marginBottom: '0.5rem' }}>Founder OS</h1>
         <p style={{ color: '#666', marginBottom: '1.5rem' }}>
           Enter the team API key to sign in. In development with no
           <code> RUNNER_API_KEY</code> set on the server, leave it blank.

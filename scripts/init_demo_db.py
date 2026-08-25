@@ -307,7 +307,7 @@ def create_demo_contacts():
 
 def main():
     """Initialize demo database."""
-    print("\n🚀 Initializing WorkCrew AI Demo Database\n")
+    print("\n🚀 Initializing Founder OS Demo Database\n")
 
     try:
         init_database()

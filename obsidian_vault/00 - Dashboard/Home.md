@@ -3,7 +3,7 @@ tags: [dashboard, home]
 created: 2026-06-11
 ---
 
-# 🗂️ WorkCrew CMS OS — Vault Home
+# 🗂️ Founder OS — Vault Home
 
 > Master index for the WorkCrew content machine. Every week, every artifact, every decision lives here.
 

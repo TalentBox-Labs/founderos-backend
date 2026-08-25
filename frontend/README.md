@@ -1,6 +1,6 @@
-# WorkCrew CRM — Frontend
+# Founder OS — Frontend
 
-React (Vite) frontend for the WorkCrew CRM platform. Connects to the FastAPI
+React (Vite) frontend for the Founder OS platform. Connects to the FastAPI
 backend (`runner_api.py`) running on port 8000.
 
 ## Prerequisites

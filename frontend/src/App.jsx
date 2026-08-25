@@ -48,7 +48,7 @@ export default function App() {
         <nav className="navbar">
           <div className="nav-container">
             <NavLink to="/" className="nav-logo">
-              WorkCrew CRM
+              Founder OS
             </NavLink>
             {isAuthed() && (
               <ul className="nav-menu">
