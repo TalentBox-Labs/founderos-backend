@@ -36,6 +36,7 @@ from src.tools.google_sheet_sync import (
 )
 from src.tools.runtime_paths import REPO_ROOT, TRACKER_PATH
 from src.tools.sheet_sync import SHEET_HEADERS, compose_sheet_row
+from src.tools.env_compat import getenv_compat
 
 try:
     from dotenv import load_dotenv
@@ -131,7 +132,7 @@ def fetch_mirror_rows_by_id(
 
 
 def run_reader_sync() -> int:
-    reader_title = os.environ.get("WORKCREW_GOOGLE_READER_TAB", "Content Tracker").strip()
+    reader_title = getenv_compat("GOOGLE_READER_TAB", "Content Tracker").strip()
     if not reader_title:
         print("ERROR: WORKCREW_GOOGLE_READER_TAB is empty.", file=sys.stderr)
         return 1
@@ -154,7 +155,7 @@ def run_reader_sync() -> int:
     try:
         service = build_sheets_service(sa_path, readonly=False)
         mirror_by_id = fetch_mirror_rows_by_id(service, source_env)
-        if os.environ.get("WORKCREW_READER_SYNC_VERIFY", "").strip() in (
+        if getenv_compat("READER_SYNC_VERIFY", "").strip() in (
             "1",
             "true",
             "yes",

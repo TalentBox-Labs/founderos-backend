@@ -6,6 +6,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from revenue_os.env_compat import getenv_compat
+
 load_dotenv()
 
 
@@ -64,15 +66,14 @@ class Settings:
     )
     N8N_API_KEY: str = os.getenv("N8N_API_KEY", "")
 
-    # Google Sheets (reuse existing CMS OS vars)
-    GOOGLE_SERVICE_ACCOUNT: str = os.getenv(
-        "WORKCREW_GOOGLE_SERVICE_ACCOUNT", ""
-    )
-    GOOGLE_SHEET_ID: str = os.getenv("WORKCREW_GOOGLE_SHEET_ID", "")
+    # Google Sheets — FOUNDER_OS_* preferred; WORKCREW_* legacy fallback
+    GOOGLE_SERVICE_ACCOUNT: str = getenv_compat("GOOGLE_SERVICE_ACCOUNT", "")
+    GOOGLE_SHEET_ID: str = getenv_compat("GOOGLE_SHEET_ID", "")
 
-    # CrewAI (reuse existing CMS OS defaults)
-    WORKCREW_CREWAI_MODEL: str = os.getenv(
-        "WORKCREW_CREWAI_MODEL", "ollama/llama3.1:8b"
+    # CrewAI — FOUNDER_OS_* preferred; WORKCREW_* legacy fallback
+    # Attribute name retained for compatibility with existing callers.
+    WORKCREW_CREWAI_MODEL: str = getenv_compat(
+        "CREWAI_MODEL", "ollama/llama3.1:8b"
     )
 
 

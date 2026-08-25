@@ -40,6 +40,7 @@ from src.tools.google_sheet_sync import (
 )
 from src.tools.metadata_checker import _split_front_matter
 from src.tools.runtime_paths import REPO_ROOT, TRACKER_PATH, load_canonical_runtime_config
+from src.tools.env_compat import getenv_compat
 
 TRACKER_REQUIRED_COLUMNS: tuple[str, ...] = (
     "content_id",
@@ -105,7 +106,7 @@ def _sheet_sync_row_delay_s() -> float:
     row-mutations per minute under typical quotas. Set ``WORKCREW_SHEET_SYNC_ROW_DELAY_S``
     to ``0`` to disable (not recommended if you see 429).
     """
-    raw = os.environ.get("WORKCREW_SHEET_SYNC_ROW_DELAY_S", "1.2").strip()
+    raw = getenv_compat("SHEET_SYNC_ROW_DELAY_S", "1.2").strip()
     try:
         v = float(raw)
     except ValueError:

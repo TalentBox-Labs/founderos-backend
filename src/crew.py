@@ -8,6 +8,7 @@ from crewai import Agent, Crew, LLM, Process, Task
 
 from src.crew_contract import qa_report_contract_errors
 from src.tools.csv_reader import get_active_content
+from src.tools.env_compat import getenv_compat
 from src.tools.runtime_paths import load_runtime_config
 
 
@@ -83,15 +84,15 @@ def save_file(file_path: str, content: str) -> None:
 
 def build_crew_llm() -> LLM:
     """LLM from environment (defaults: local Ollama)."""
-    model_raw = os.environ.get("WORKCREW_CREWAI_MODEL", "ollama/llama3.1:8b")
-    base_url = os.environ.get(
-        "WORKCREW_OLLAMA_BASE_URL",
+    model_raw = getenv_compat("CREWAI_MODEL", "ollama/llama3.1:8b")
+    base_url = getenv_compat(
+        "OLLAMA_BASE_URL",
         os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434"),
     )
     # Strip provider prefix (e.g. "ollama/") — bare model name is passed with explicit api_base
     model = model_raw.split("/", 1)[-1] if "/" in model_raw else model_raw
-    api_key = os.environ.get("WORKCREW_CREWAI_API_KEY", "ollama")
-    temperature = float(os.environ.get("WORKCREW_CREWAI_TEMPERATURE", "0"))
+    api_key = getenv_compat("CREWAI_API_KEY", "ollama")
+    temperature = float(getenv_compat("CREWAI_TEMPERATURE", "0"))
     return LLM(model=model, api_base=base_url, api_key=api_key, temperature=temperature)
 
 

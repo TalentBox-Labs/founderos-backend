@@ -5,11 +5,13 @@ Run from repo root:
     ./venv/bin/python -m src.tools.pipeline_orchestrator
 
 Writes ``output/pipeline_orchestrator_run.json`` and prints one line prefixed with
+``FOUNDER_OS_PIPELINE_SUMMARY_JSON=`` (preferred) plus legacy
 ``WORKCREW_PIPELINE_SUMMARY_JSON=`` for log capture.
 Exit code ``0`` on success, ``1`` if ``run_pipeline()`` raised.
 
-If your shell has ``WORKCREW_RUNTIME_CONFIG`` exported (e.g. after experiments), run
-``env -u WORKCREW_RUNTIME_CONFIG python -m src.tools.pipeline_orchestrator`` so
+If your shell has ``FOUNDER_OS_RUNTIME_CONFIG`` or legacy ``WORKCREW_RUNTIME_CONFIG``
+exported (e.g. after experiments), run
+``env -u FOUNDER_OS_RUNTIME_CONFIG -u WORKCREW_RUNTIME_CONFIG python -m src.tools.pipeline_orchestrator`` so
 ``data/runtime_config.json`` is used.
 """
 
@@ -23,18 +25,20 @@ from datetime import datetime, timezone
 
 from src.tools.pipeline_runner import run_pipeline
 from src.tools.runtime_paths import REPO_ROOT, load_runtime_config
+from src.tools.env_compat import getenv_compat_optional
 
 SUMMARY_REL = "output/pipeline_orchestrator_run.json"
 
 
 def run_with_summary() -> dict:
-    override = os.environ.get("WORKCREW_RUNTIME_CONFIG")
+    override = getenv_compat_optional("RUNTIME_CONFIG")
     if override:
         print(
-            f"\nNOTE: WORKCREW_RUNTIME_CONFIG is set ({override!r}); "
+            f"\nNOTE: FOUNDER_OS_RUNTIME_CONFIG / WORKCREW_RUNTIME_CONFIG is set ({override!r}); "
             f"active week comes from that file, not data/runtime_config.json.\n"
             f"Unset it in this shell to use the canonical runtime (e.g. "
-            f"`unset WORKCREW_RUNTIME_CONFIG` or `env -u WORKCREW_RUNTIME_CONFIG …`).\n",
+            f"`unset FOUNDER_OS_RUNTIME_CONFIG WORKCREW_RUNTIME_CONFIG` or "
+            f"`env -u FOUNDER_OS_RUNTIME_CONFIG -u WORKCREW_RUNTIME_CONFIG …`).\n",
             file=sys.stderr,
             flush=True,
         )
@@ -54,6 +58,11 @@ def run_with_summary() -> dict:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(rec, indent=2), encoding="utf-8")
 
+    print(
+        "FOUNDER_OS_PIPELINE_SUMMARY_JSON=" + json.dumps(rec, separators=(",", ":")),
+        flush=True,
+    )
+    # Legacy log-capture token preserved for existing schedulers/parsers.
     print(
         "WORKCREW_PIPELINE_SUMMARY_JSON=" + json.dumps(rec, separators=(",", ":")),
         flush=True,

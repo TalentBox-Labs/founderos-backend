@@ -15,6 +15,7 @@ from typing import Any
 from pathlib import Path
 
 from src.tools.runtime_paths import REPO_ROOT
+from src.tools.env_compat import getenv_compat
 
 try:
     from dotenv import load_dotenv
@@ -56,10 +57,10 @@ class SheetEnv:
 
 
 def load_sheet_env(*, require_tab: bool) -> SheetEnv:
-    sa_raw = os.environ.get("WORKCREW_GOOGLE_SERVICE_ACCOUNT", "").strip()
-    sheet_id = os.environ.get("WORKCREW_GOOGLE_SHEET_ID", "").strip()
-    tab = os.environ.get("WORKCREW_GOOGLE_SHEET_TAB", "").strip()
-    hr_raw = os.environ.get("WORKCREW_GOOGLE_SHEET_HEADER_ROW", "").strip()
+    sa_raw = getenv_compat("GOOGLE_SERVICE_ACCOUNT", "").strip()
+    sheet_id = getenv_compat("GOOGLE_SHEET_ID", "").strip()
+    tab = getenv_compat("GOOGLE_SHEET_TAB", "").strip()
+    hr_raw = getenv_compat("GOOGLE_SHEET_HEADER_ROW", "").strip()
 
     if not sa_raw:
         raise RuntimeError(

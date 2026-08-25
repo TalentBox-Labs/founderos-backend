@@ -23,6 +23,7 @@ import sys
 from pathlib import Path
 
 from src.tools.runtime_paths import REPO_ROOT
+from src.tools.env_compat import getenv_compat
 
 try:
     from dotenv import load_dotenv
@@ -41,9 +42,9 @@ def _load_sa_email(sa_path: Path) -> str:
 
 
 def verify() -> int:
-    sa_raw = os.environ.get("WORKCREW_GOOGLE_SERVICE_ACCOUNT", "").strip()
-    sheet_id = os.environ.get("WORKCREW_GOOGLE_SHEET_ID", "").strip()
-    tab_want = os.environ.get("WORKCREW_GOOGLE_SHEET_TAB", "").strip()
+    sa_raw = getenv_compat("GOOGLE_SERVICE_ACCOUNT", "").strip()
+    sheet_id = getenv_compat("GOOGLE_SHEET_ID", "").strip()
+    tab_want = getenv_compat("GOOGLE_SHEET_TAB", "").strip()
 
     if not sa_raw:
         print(

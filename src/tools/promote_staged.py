@@ -9,6 +9,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+from src.tools.env_compat import getenv_compat, getenv_compat_optional
 from src.tools.promotion_audit import (
     AUDIT_DIR,
     PHASE2A_PROMOTION_FILENAMES,
@@ -92,7 +93,7 @@ def promote_staged_bundle(
         print(f"ERROR: Staging dir missing files: {missing}", file=sys.stderr)
         return 1
 
-    approver_resolved = (approver or os.environ.get("WORKCREW_PROMOTION_APPROVER") or "").strip()
+    approver_resolved = (approver or getenv_compat_optional("PROMOTION_APPROVER") or "").strip()
 
     if dry_run:
         print(
@@ -238,7 +239,7 @@ def main() -> None:
 
     skip_val = False
     if args.skip_validation:
-        if os.environ.get("WORKCREW_PROMOTE_FORCE", "").lower() not in ("1", "true", "yes"):
+        if getenv_compat("PROMOTE_FORCE", "").lower() not in ("1", "true", "yes"):
             print(
                 "ERROR: --skip-validation requires WORKCREW_PROMOTE_FORCE=1.",
                 file=sys.stderr,

@@ -14,6 +14,7 @@ from crewai import Agent, Crew, Process, Task
 from src.base_crew import BaseCrew
 from src.crew import BASE_DIR, build_crew_llm, load_yaml, read_file, save_file
 from src.tools.csv_reader import get_active_content
+from src.tools.env_compat import getenv_compat
 from src.tools.runtime_paths import load_runtime_config
 from src.tools.staging_overlay import warn_if_staging_week_mismatch
 
@@ -199,7 +200,7 @@ class GenerationCrew(BaseCrew):
 
     def _maybe_backup(self, repo_relative_path: str) -> None:
         """Back up file if WORKCREW_GENERATION_BACKUP is enabled."""
-        if os.environ.get("WORKCREW_GENERATION_BACKUP", "1").lower() in (
+        if getenv_compat("GENERATION_BACKUP", "1").lower() in (
             "0",
             "false",
             "no",
@@ -252,7 +253,7 @@ def _artifact_paths_for_run(
 
 
 def _maybe_backup(repo_relative_path: str) -> None:
-    if os.environ.get("WORKCREW_GENERATION_BACKUP", "1").lower() in (
+    if getenv_compat("GENERATION_BACKUP", "1").lower() in (
         "0",
         "false",
         "no",
@@ -301,7 +302,7 @@ def _run_single_task(
 
 
 def _direct_input_write_allowed() -> bool:
-    return os.environ.get("WORKCREW_ALLOW_DIRECT_INPUT_WRITE", "").lower() in (
+    return getenv_compat("ALLOW_DIRECT_INPUT_WRITE", "").lower() in (
         "1",
         "true",
         "yes",

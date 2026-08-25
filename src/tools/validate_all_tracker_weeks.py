@@ -21,6 +21,7 @@ from pathlib import Path
 from src.tools.pipeline_runner import run_validation_pipeline
 from src.tools.runtime_paths import REPO_ROOT, TRACKER_PATH
 from src.tools.sheet_sync import _week_id_sort_key
+from src.tools.env_compat import set_compat, pop_compat
 
 PROFILES = REPO_ROOT / "data" / "week_runtime"
 
@@ -40,7 +41,7 @@ def main() -> int:
             if not prof.is_file():
                 failures.append(f"{wid}: missing profile {prof.relative_to(REPO_ROOT)}")
                 continue
-            os.environ["WORKCREW_RUNTIME_CONFIG"] = str(prof.resolve())
+            set_compat("RUNTIME_CONFIG", str(prof.resolve()))
             print(f"\n{'='*60}\nVALIDATING {wid}  (profile {prof.name})\n{'='*60}")
             try:
                 run_validation_pipeline()
@@ -49,7 +50,7 @@ def main() -> int:
     finally:
         # Always clear so the last validated week's profile does not leak into a
         # follow-on command in the same shell (e.g. main.py / pipeline_orchestrator).
-        os.environ.pop("WORKCREW_RUNTIME_CONFIG", None)
+        pop_compat("RUNTIME_CONFIG")
 
     if failures:
         print("\nVALIDATE_ALL FAILED:\n", file=sys.stderr)

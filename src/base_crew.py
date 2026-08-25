@@ -11,6 +11,8 @@ from typing import Any
 import yaml
 from crewai import Agent, Crew, LLM, Process, Task
 
+from src.tools.env_compat import getenv_compat
+
 logger = logging.getLogger(__name__)
 
 
@@ -53,15 +55,15 @@ class BaseCrew(ABC):
 
     def _build_llm(self) -> LLM:
         """Build LLM instance from environment variables."""
-        model_raw = os.environ.get("WORKCREW_CREWAI_MODEL", "ollama/llama3.1:8b")
-        base_url = os.environ.get(
-            "WORKCREW_OLLAMA_BASE_URL",
+        model_raw = getenv_compat("CREWAI_MODEL", "ollama/llama3.1:8b")
+        base_url = getenv_compat(
+            "OLLAMA_BASE_URL",
             os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434"),
         )
         # Strip provider prefix (e.g., "ollama/") — bare model name with explicit api_base
         model = model_raw.split("/", 1)[-1] if "/" in model_raw else model_raw
-        api_key = os.environ.get("WORKCREW_CREWAI_API_KEY", "ollama")
-        temperature = float(os.environ.get("WORKCREW_CREWAI_TEMPERATURE", "0"))
+        api_key = getenv_compat("CREWAI_API_KEY", "ollama")
+        temperature = float(getenv_compat("CREWAI_TEMPERATURE", "0"))
 
         logger.debug(
             f"Building LLM for {self.name}",

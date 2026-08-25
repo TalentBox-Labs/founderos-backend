@@ -8,6 +8,7 @@ import subprocess
 import sys
 from typing import Any
 
+from src.tools.env_compat import founder_os_key, workcrew_key
 from src.tools.promotion_audit import parse_validator_verdict
 from src.tools.runtime_paths import REPO_ROOT
 from src.tools.staging_overlay import (
@@ -54,7 +55,8 @@ def _run_validator_chain(
     overlay = overlay_path_factory(staging_root.strip(), week_id.strip().upper())
     rel = overlay.relative_to(REPO_ROOT)
     env = os.environ.copy()
-    env["WORKCREW_RUNTIME_CONFIG"] = str(rel)
+    env[founder_os_key("RUNTIME_CONFIG")] = str(rel)
+    env[workcrew_key("RUNTIME_CONFIG")] = str(rel)
 
     runs: list[dict[str, Any]] = []
     failed = False
