@@ -46,6 +46,10 @@ from revenue_os.services.command_v2_decisions import (
     compose_decision_detail,
     compose_decisions_queue,
 )
+from revenue_os.services.command_v2_agents import (
+    compose_agent_activity_detail,
+    compose_agents_overview,
+)
 from revenue_os.services.operator_flow_read_model import build_operator_flow_snapshot
 from revenue_os.services.revenue_orchestration_service import (
     RevenueOrchestrationError,
@@ -1553,6 +1557,117 @@ def build_decision_detail_snapshot(
     finally:
         db.close()
 
+
+def _agents_source_bundle(*, organization_id: str) -> dict[str, Any]:
+    """Load existing orch / activity / pending approvals for I4 composition."""
+    pending: list[dict[str, Any]] = []
+    try:
+        pending = [
+            _present_approval(a)
+            for a in list_requests(
+                status="pending", limit=100, organization_id=organization_id
+            )
+        ]
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Agents snapshot pending approvals unavailable: %s", exc)
+
+    orch: dict[str, Any] = {"counts": {}}
+    try:
+        db = SessionLocal()
+        try:
+            orch = compose_orchestration_summary(db, organization_id=str(organization_id))
+        finally:
+            db.close()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Agents snapshot orchestration unavailable: %s", exc)
+
+    activity: list[dict[str, Any]] = []
+    try:
+        db = SessionLocal()
+        try:
+            activity = _org_scoped_actions(db, organization_id=organization_id, limit=80)
+        finally:
+            db.close()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Agents snapshot activity unavailable: %s", exc)
+
+    return {
+        "pending_approvals": pending,
+        "agent_orchestration": orch if isinstance(orch, dict) else {"counts": {}},
+        "recent_activity": activity,
+    }
+
+
+def build_agents_snapshot(*, organization_id: str | None = None) -> dict[str, Any]:
+    """I4 Agents Overview — presentation-only, tenant-fail-closed."""
+    org = str(organization_id).strip() if organization_id else None
+    if not org:
+        return {
+            "generated_at": _utc_now(),
+            "state": "unavailable",
+            "message": "Organization context required",
+            "organization_id": None,
+            "agents_overview": compose_agents_overview(
+                organization_id=None,
+                agent_orchestration={},
+                recent_activity=[],
+                pending_approvals=[],
+            ),
+        }
+    bundle = _agents_source_bundle(organization_id=org)
+    overview = compose_agents_overview(
+        organization_id=org,
+        agent_orchestration=bundle["agent_orchestration"],
+        recent_activity=bundle["recent_activity"],
+        pending_approvals=bundle["pending_approvals"],
+    )
+    return {
+        "generated_at": _utc_now(),
+        "state": "ok",
+        "message": "",
+        "organization_id": org,
+        "agents_overview": overview,
+    }
+
+
+def build_agent_activity_detail_snapshot(
+    *,
+    organization_id: str | None = None,
+    activity_key: str | None = None,
+) -> dict[str, Any]:
+    """I4 Agent Activity Detail — presentation-only, tenant-fail-closed."""
+    org = str(organization_id).strip() if organization_id else None
+    if not org:
+        return {
+            "generated_at": _utc_now(),
+            "state": "unavailable",
+            "message": "Organization context required",
+            "detail": compose_agent_activity_detail(
+                organization_id=None,
+                activity_key=activity_key,
+                agent_orchestration={},
+                recent_activity=[],
+                pending_approvals=[],
+            ),
+        }
+    bundle = _agents_source_bundle(organization_id=org)
+    detail = compose_agent_activity_detail(
+        organization_id=org,
+        activity_key=activity_key,
+        agent_orchestration=bundle["agent_orchestration"],
+        recent_activity=bundle["recent_activity"],
+        pending_approvals=bundle["pending_approvals"],
+    )
+    return {
+        "generated_at": _utc_now(),
+        "state": "ok" if detail.get("available") else "unavailable",
+        "message": (
+            ""
+            if detail.get("available")
+            else "Agent activity unavailable for this organization"
+        ),
+        "detail": detail,
+    }
 
 
 def build_activity_snapshot(

@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}Agents — Founder OS{% endblock %}
+{% block topbar_title %}Agents{% endblock %}
+{% block topbar_meta %}What your agents are doing, waiting on, or need from you{% endblock %}
+
+{% block content %}
+{% set overview = snapshot.agents_overview if snapshot.agents_overview is mapping else {} %}
+{% set items = overview.activity_items if overview.activity_items is sequence else [] %}
+
+<p class="founder-meta" style="margin-bottom:12px">
+  Observability only — opening this page does not approve, send, book, or execute.
+</p>
+
+{% if snapshot.state == 'unavailable' or overview.fail_closed_reason %}
+<p class="founder-empty" data-testid="agents-overview-unavailable">
+  {{ snapshot.message or 'Agents unavailable for this organization' }}
+</p>
+{% elif items|length == 0 %}
+<p class="founder-empty" data-testid="agents-overview-empty">
+  No agent activity is visible right now.
+</p>
+{% else %}
+
+<div class="founder-card" style="margin-bottom:16px" data-testid="agents-overview">
+  <div class="founder-card-title">
+    Agent activity
+    <span class="pill gray" data-testid="agents-overview-count">{{ overview.count }}</span>
+  </div>
+  <div class="founder-meta">
+    {{ overview.agent_count }} agent presentation group{{ 's' if overview.agent_count != 1 else '' }}
+    (presentation only — not a persistent agent registry)
+  </div>
+</div>
+
+{% for item in items %}
+<div class="founder-card" style="margin-bottom:12px"
+     data-testid="agents-overview-item"
+     data-activity-key="{{ item.activity_key }}"
+     data-normalized-state="{{ item.normalized_state }}"
+     data-presentation-agent-key="{{ item.presentation_agent_key }}">
+  <div class="founder-card-title">
+    {{ item.agent_name or 'Agent' }}
+    <span class="pill {% if item.founder_action_required %}amber{% elif item.normalized_state == 'RUNNING' %}green{% elif item.normalized_state == 'RECOVERING' %}blue{% else %}gray{% endif %}">
+      {{ item.state_label }}
+    </span>
+  </div>
+  <div class="founder-meta">{{ item.agent_role }} · {{ item.objective }}</div>
+  {% if item.account_context %}
+  <div class="founder-meta">Context: {{ item.account_context }}</div>
+  {% endif %}
+  {% if item.waiting_on %}
+  <div class="founder-meta" data-testid="agents-waiting-on">Waiting on: {{ item.waiting_on }}</div>
+  {% endif %}
+  {% if item.latest_event %}
+  <div class="founder-meta">Latest: {{ item.latest_event }}</div>
+  {% endif %}
+  {% if item.occurred_at %}
+  <div class="founder-meta">{{ item.occurred_at }}</div>
+  {% endif %}
+  {% if item.freshness and item.freshness != 'current' %}
+  <div class="founder-meta" data-testid="agents-freshness">Freshness: {{ item.freshness }}</div>
+  {% endif %}
+  <div style="margin-top:8px">
+    <a class="btn btn-ghost btn-sm" href="{{ item.href_detail }}" data-testid="agents-open-activity">
+      Open activity →
+    </a>
+    {% if item.href_decision %}
+    <a class="btn btn-primary btn-sm" href="{{ item.href_decision }}" data-testid="agents-view-decision">
+      View Decision
+    </a>
+    {% endif %}
+  </div>
+</div>
+{% endfor %}
+
+{% endif %}
+{% endblock %}

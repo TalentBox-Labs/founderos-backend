@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+
+{% block title %}Agent Activity — Founder OS{% endblock %}
+{% block topbar_title %}Agent Activity{% endblock %}
+{% block topbar_meta %}What happened, what it is waiting on, and what requires you{% endblock %}
+
+{% block content %}
+{% set detail = snapshot.detail if snapshot.detail is mapping else {} %}
+
+<p class="founder-meta" style="margin-bottom:12px">
+  <a href="{{ detail.href_overview or '/agents' }}">← Agents</a>
+</p>
+
+{% if snapshot.state == 'unavailable' or not detail.available %}
+<p class="founder-empty" data-testid="agent-activity-unavailable">
+  {{ snapshot.message or 'Agent activity unavailable for this organization' }}
+</p>
+{% else %}
+
+<div class="founder-card" style="margin-bottom:16px" data-testid="agent-activity-detail"
+     data-activity-key="{{ detail.activity_key }}"
+     data-normalized-state="{{ detail.current_state.normalized_state }}"
+     data-presentation-agent-key="{{ detail.presentation_agent_key }}">
+  <div class="founder-card-title">
+    {{ detail.agent_name or 'Agent' }}
+    <span class="pill amber">{{ detail.current_state.state_label }}</span>
+  </div>
+  <div class="founder-meta">{{ detail.agent_role }}</div>
+</div>
+
+<div class="founder-card" style="margin-bottom:16px" data-testid="agent-activity-objective">
+  <div class="founder-card-title">Objective</div>
+  <div class="founder-meta"><strong>{{ detail.objective.text }}</strong></div>
+  {% if detail.objective.account_context %}
+  <div class="founder-meta">Context: {{ detail.objective.account_context }}</div>
+  {% endif %}
+</div>
+
+<div class="founder-card" style="margin-bottom:16px" data-testid="agent-activity-state">
+  <div class="founder-card-title">Current state</div>
+  <div class="founder-meta">{{ detail.current_state.state_label }}</div>
+  <div class="founder-meta">Freshness: {{ detail.current_state.freshness }}</div>
+  {% if detail.current_state.founder_action_required %}
+  <div class="founder-meta"><span class="pill amber">Founder action required</span></div>
+  {% endif %}
+  {% if detail.current_state.provider_awaited %}
+  <div class="founder-meta"><span class="pill gray">Waiting on provider</span></div>
+  {% endif %}
+  {% if detail.current_state.continues_autonomously %}
+  <div class="founder-meta"><span class="pill green">May continue without you</span></div>
+  {% endif %}
+</div>
+
+<div class="founder-card" style="margin-bottom:16px" data-testid="agent-activity-what-happened">
+  <div class="founder-card-title">What happened</div>
+  <div class="founder-meta">{{ detail.what_happened.text }}</div>
+  {% if detail.what_happened.latest_event %}
+  <div class="founder-meta">Latest event: {{ detail.what_happened.latest_event }}</div>
+  {% endif %}
+  {% if detail.what_happened.occurred_at %}
+  <div class="founder-meta">{{ detail.what_happened.occurred_at }}</div>
+  {% endif %}
+</div>
+
+<div class="founder-card" style="margin-bottom:16px" data-testid="agent-activity-why">
+  <div class="founder-card-title">Why it stopped / continues</div>
+  <div class="founder-meta">{{ detail.why_stopped_or_continues.text }}</div>
+</div>
+
+<div class="founder-card" style="margin-bottom:16px" data-testid="agent-activity-waiting">
+  <div class="founder-card-title">What it is waiting on</div>
+  {% if detail.waiting_on.text %}
+  <div class="founder-meta">{{ detail.waiting_on.text }}</div>
+  {% else %}
+  <div class="founder-meta">Nothing explicit is recorded as a wait.</div>
+  {% endif %}
+</div>
+
+{% if detail.what_happens_next.available %}
+<div class="founder-card" style="margin-bottom:16px" data-testid="agent-activity-next">
+  <div class="founder-card-title">What happens next</div>
+  <div class="founder-meta">{{ detail.what_happens_next.text }}</div>
+</div>
+{% endif %}
+
+<div class="founder-card" style="margin-bottom:16px" data-testid="agent-activity-provenance">
+  <div class="founder-card-title">Provenance</div>
+  {% if detail.provenance.canonical_work_id %}
+  <div class="founder-meta">Work id: {{ detail.provenance.canonical_work_id }}</div>
+  {% endif %}
+  {% if detail.provenance.canonical_event_id %}
+  <div class="founder-meta">Event id: {{ detail.provenance.canonical_event_id }}</div>
+  {% endif %}
+  {% if detail.provenance.action_type %}
+  <div class="founder-meta">Action type: {{ detail.provenance.action_type }}</div>
+  {% endif %}
+  {% if detail.provenance.execution_mode %}
+  <div class="founder-meta">Execution mode: {{ detail.provenance.execution_mode }}</div>
+  {% endif %}
+  {% if detail.provenance.source_list %}
+  <div class="founder-meta">Source list: {{ detail.provenance.source_list }}</div>
+  {% endif %}
+  <div class="founder-meta">
+    Presentation keys are not persistent Agent or Situation identity.
+  </div>
+</div>
+
+{% if detail.related_decision %}
+<div class="founder-card" style="margin-bottom:16px" data-testid="agent-activity-related-decision">
+  <div class="founder-card-title">Related decision</div>
+  <div class="founder-meta">Canonical ApprovalRequest is waiting for judgment.</div>
+  <a class="btn btn-primary btn-sm" style="margin-top:8px"
+     href="{{ detail.related_decision.href }}"
+     data-testid="agent-activity-view-decision">
+    {{ detail.related_decision.label or 'View Decision' }}
+  </a>
+</div>
+{% endif %}
+
+{% if detail.what_did_not_happen %}
+<div class="founder-card" style="margin-bottom:16px" data-testid="agent-activity-did-not-happen">
+  <div class="founder-card-title">What did not happen</div>
+  {% for note in detail.what_did_not_happen %}
+  <div class="founder-meta">• {{ note }}</div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="founder-card" style="margin-bottom:16px" data-testid="agent-activity-authority">
+  <div class="founder-card-title">Authority boundary</div>
+  {% for line in detail.authority.exists %}
+  <div class="founder-meta">✓ {{ line }}</div>
+  {% endfor %}
+  {% for line in detail.authority.does_not_exist %}
+  <div class="founder-meta">✕ {{ line }}</div>
+  {% endfor %}
+</div>
+
+{% if detail.actions %}
+<div class="founder-card" style="margin-bottom:16px" data-testid="agent-activity-actions">
+  <div class="founder-card-title">Actions</div>
+  {% for action in detail.actions %}
+    {% if action.href %}
+    <a class="btn btn-ghost btn-sm" href="{{ action.href }}" data-testid="agent-activity-action">
+      {{ action.label }}
+    </a>
+    {% endif %}
+  {% endfor %}
+</div>
+{% endif %}
+
+{% endif %}
+{% endblock %}

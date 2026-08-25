@@ -43,6 +43,8 @@ from revenue_os.services.cockpit_read_model import build_cockpit_snapshot
 from revenue_os.services.founder_ui_read_model import (
     attach_safe_booking,
     build_activity_snapshot,
+    build_agent_activity_detail_snapshot,
+    build_agents_snapshot,
     build_approvals_snapshot,
     build_command_center_snapshot,
     build_contact_workspace_snapshot,
@@ -868,6 +870,35 @@ def page_founder_decision_detail(
     )
     return templates.TemplateResponse(
         request=request, name="founder_decision_detail.html", context=ctx
+    )
+
+
+@router.get("/agents", response_class=HTMLResponse, response_model=None)
+def page_founder_agents(request: Request) -> HTMLResponse | RedirectResponse:
+    """I4 — Agents Overview (observability / presentation only)."""
+    redirected = founder_login_redirect(request)
+    if redirected is not None:
+        return redirected
+    ctx = _founder_page_context(request, active_page="agents")
+    ctx["snapshot"] = build_agents_snapshot(organization_id=ctx.get("org_id"))
+    return templates.TemplateResponse(request=request, name="founder_agents.html", context=ctx)
+
+
+@router.get("/agents/activity/{activity_key}", response_class=HTMLResponse, response_model=None)
+def page_founder_agent_activity(
+    request: Request, activity_key: str
+) -> HTMLResponse | RedirectResponse:
+    """I4 — Agent Activity Detail (tenant-fail-closed, no mutation)."""
+    redirected = founder_login_redirect(request)
+    if redirected is not None:
+        return redirected
+    ctx = _founder_page_context(request, active_page="agents")
+    ctx["snapshot"] = build_agent_activity_detail_snapshot(
+        organization_id=ctx.get("org_id"),
+        activity_key=activity_key,
+    )
+    return templates.TemplateResponse(
+        request=request, name="founder_agent_activity.html", context=ctx
     )
 
 
