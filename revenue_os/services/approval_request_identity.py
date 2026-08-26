@@ -12,6 +12,21 @@ FAMILY_REPLY_EMAIL = "reply_email"
 FAMILY_BOOK_MEETING = "book_meeting"
 FAMILY_LINKEDIN_MESSAGE = "linkedin_message"
 FAMILY_CREATE_DEAL = "create_deal"
+FAMILY_EMAIL_CAMPAIGN = "email_campaign"
+FAMILY_WHATSAPP_CAMPAIGN = "whatsapp_campaign"
+FAMILY_LINKEDIN_CAMPAIGN = "linkedin_campaign"
+FAMILY_SOCIAL_CAMPAIGN = "social_campaign"
+
+TARGET_TYPE_MARKETING_CAMPAIGN = "marketing_campaign"
+
+CAMPAIGN_FAMILIES = frozenset(
+    {
+        FAMILY_EMAIL_CAMPAIGN,
+        FAMILY_WHATSAPP_CAMPAIGN,
+        FAMILY_LINKEDIN_CAMPAIGN,
+        FAMILY_SOCIAL_CAMPAIGN,
+    }
+)
 
 STATUS_PENDING = "pending"
 STATUS_APPROVED = "approved"
@@ -35,6 +50,14 @@ def classify_approval_family(action_type: str) -> str:
             return FAMILY_LINKEDIN_MESSAGE
         case "create_deal":
             return FAMILY_CREATE_DEAL
+        case "send_email_campaign":
+            return FAMILY_EMAIL_CAMPAIGN
+        case "send_whatsapp_campaign":
+            return FAMILY_WHATSAPP_CAMPAIGN
+        case "publish_linkedin_post":
+            return FAMILY_LINKEDIN_CAMPAIGN
+        case "publish_social_post":
+            return FAMILY_SOCIAL_CAMPAIGN
         case _:
             raise ValueError(f"Unknown approval action_type: {action_type}")
 
@@ -49,13 +72,46 @@ def normalize_slot_timestamp(raw: str) -> str:
     return dt.isoformat()
 
 
+def campaign_logical_key(campaign_id: str) -> str:
+    return f"campaign:{campaign_id}"
+
+
+def _resolve_campaign_id(
+    *,
+    target_type: str | None,
+    target_id: str | None,
+    payload: dict[str, Any],
+) -> str:
+    """Campaign instance id only — never contact_id, recipients, or copy."""
+    campaign_id = str(payload.get("campaign_id") or "").strip()
+    if not campaign_id and str(target_type or "").strip() == TARGET_TYPE_MARKETING_CAMPAIGN:
+        campaign_id = str(target_id or "").strip()
+    if not campaign_id:
+        raise ValueError(
+            "Campaign approval requires campaign_id "
+            "(or target_type=marketing_campaign with target_id)"
+        )
+    return campaign_id
+
+
 def build_logical_key(
     *,
     approval_family: str,
     organization_id: str,
     target_id: str | None,
     payload: dict[str, Any],
+    target_type: str | None = None,
 ) -> str:
+    if approval_family in CAMPAIGN_FAMILIES:
+        # Contact identity must never substitute for campaign instance identity.
+        return campaign_logical_key(
+            _resolve_campaign_id(
+                target_type=target_type,
+                target_id=target_id,
+                payload=payload,
+            )
+        )
+
     contact_id = str(payload.get("contact_id") or target_id or "").strip()
     if not contact_id:
         raise ValueError("Approval logical identity requires contact_id or target_id")
@@ -87,6 +143,7 @@ def resolve_approval_identity(
     organization_id: str,
     target_id: str | None,
     payload: dict[str, Any],
+    target_type: str | None = None,
 ) -> tuple[str, str, str]:
     org_id = str(organization_id or payload.get("organization_id") or "").strip()
     if not org_id:
@@ -97,6 +154,7 @@ def resolve_approval_identity(
         organization_id=org_id,
         target_id=target_id,
         payload=payload,
+        target_type=target_type,
     )
     return org_id, family, logical_key
 
@@ -142,6 +200,40 @@ def _material_create_deal(payload: dict[str, Any]) -> dict[str, Any]:
     return {"value": payload.get("value")}
 
 
+def _material_email_campaign(payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "campaign_type": payload.get("campaign_type"),
+        "subject": payload.get("subject"),
+        "preview_text": payload.get("preview_text"),
+        "body": payload.get("body"),
+        "cta": payload.get("cta"),
+        "recipients": payload.get("recipients"),
+    }
+
+
+def _material_whatsapp_campaign(payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "campaign_type": payload.get("campaign_type"),
+        "tag": payload.get("tag"),
+        "message": payload.get("message"),
+    }
+
+
+def _material_linkedin_campaign(payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "body": payload.get("body"),
+        "post_type": payload.get("post_type"),
+    }
+
+
+def _material_social_campaign(payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "variants": payload.get("variants"),
+        "platforms": payload.get("platforms"),
+        "topic": payload.get("topic"),
+    }
+
+
 def material_consent_fingerprint(
     approval_family: str, payload: dict[str, Any]
 ) -> str:
@@ -156,6 +248,14 @@ def material_consent_fingerprint(
             material = _material_linkedin(payload)
         case family if family == FAMILY_CREATE_DEAL:
             material = _material_create_deal(payload)
+        case family if family == FAMILY_EMAIL_CAMPAIGN:
+            material = _material_email_campaign(payload)
+        case family if family == FAMILY_WHATSAPP_CAMPAIGN:
+            material = _material_whatsapp_campaign(payload)
+        case family if family == FAMILY_LINKEDIN_CAMPAIGN:
+            material = _material_linkedin_campaign(payload)
+        case family if family == FAMILY_SOCIAL_CAMPAIGN:
+            material = _material_social_campaign(payload)
         case _:
             material = {}
     encoded = json.dumps(material, sort_keys=True, default=str)
@@ -179,6 +279,7 @@ def backfill_identity_from_row(
     action_type: str,
     target_id: str | None,
     payload: dict[str, Any] | None,
+    target_type: str | None = None,
 ) -> tuple[str | None, str | None, str | None]:
     """Best-effort identity for migration backfill."""
     payload = dict(payload or {})
@@ -192,6 +293,7 @@ def backfill_identity_from_row(
             organization_id=str(org_id),
             target_id=target_id,
             payload=payload,
+            target_type=target_type or payload.get("target_type"),
         )
         return str(org_id), family, logical_key
     except ValueError:
@@ -229,4 +331,20 @@ def backfill_identity_from_row(
                 FAMILY_CREATE_DEAL,
                 proactive_email_logical_key(str(target_id)),
             )
+        if action_type in {
+            "send_email_campaign",
+            "send_whatsapp_campaign",
+            "publish_linkedin_post",
+            "publish_social_post",
+        }:
+            campaign_id = str(payload.get("campaign_id") or "").strip()
+            if (
+                not campaign_id
+                and str(target_type or "").strip() == TARGET_TYPE_MARKETING_CAMPAIGN
+                and target_id
+            ):
+                campaign_id = str(target_id)
+            if campaign_id:
+                family = classify_approval_family(action_type)
+                return str(org_id), family, campaign_logical_key(campaign_id)
         return str(org_id), None, None

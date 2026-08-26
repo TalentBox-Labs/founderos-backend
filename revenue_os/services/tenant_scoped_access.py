@@ -155,6 +155,22 @@ def stamp_agent_action_log_organization(
         db.commit()
 
 
+def get_marketing_campaign_for_tenant(
+    db: Session, organization_id: str, campaign_id: str
+) -> Any:
+    """Resolve MarketingCampaign only when owned by the tenant organization."""
+    from revenue_os.models.marketing import MarketingCampaign
+
+    try:
+        cid = uuid_lib.UUID(str(campaign_id).strip())
+    except ValueError as exc:
+        raise TenantAccessError("Invalid campaign_id") from exc
+    campaign = db.get(MarketingCampaign, cid)
+    if campaign is None or not _org_match(campaign.organization_id, organization_id):
+        raise TenantAccessError("MarketingCampaign not in tenant scope")
+    return campaign
+
+
 def get_approval_for_tenant(
     db: Session, organization_id: str, request_id: str
 ) -> Any:

@@ -225,7 +225,9 @@ def build_test_approval_request(**overrides):
     """Construct ApprovalRequest rows for tests with canonical identity fields."""
     from revenue_os.models.approvals import ApprovalRequest
     from revenue_os.services.approval_request_identity import (
+        CAMPAIGN_FAMILIES,
         FAMILY_PROACTIVE_EMAIL,
+        TARGET_TYPE_MARKETING_CAMPAIGN,
         build_logical_key,
         classify_approval_family,
         proactive_email_logical_key,
@@ -234,6 +236,7 @@ def build_test_approval_request(**overrides):
     payload = dict(overrides.pop("payload", {}) or {})
     action_type = overrides.pop("action_type", "send_outreach_email")
     target_id = overrides.pop("target_id", None)
+    target_type = overrides.pop("target_type", None)
     org_id = str(
         overrides.pop(
             "organization_id",
@@ -241,8 +244,19 @@ def build_test_approval_request(**overrides):
         )
     )
     payload.setdefault("organization_id", org_id)
+    try:
+        family_preview = classify_approval_family(action_type)
+    except ValueError:
+        family_preview = None
     if target_id:
-        payload.setdefault("contact_id", str(target_id))
+        if family_preview in CAMPAIGN_FAMILIES:
+            payload.setdefault("campaign_id", str(target_id))
+            if target_type is None:
+                target_type = TARGET_TYPE_MARKETING_CAMPAIGN
+        else:
+            payload.setdefault("contact_id", str(target_id))
+            if target_type is None:
+                target_type = "contact"
     try:
         family = classify_approval_family(action_type)
         logical_key = build_logical_key(
@@ -250,6 +264,7 @@ def build_test_approval_request(**overrides):
             organization_id=org_id,
             target_id=str(target_id) if target_id else None,
             payload=payload,
+            target_type=target_type,
         )
     except ValueError:
         family = FAMILY_PROACTIVE_EMAIL
@@ -266,7 +281,7 @@ def build_test_approval_request(**overrides):
         "status": "pending",
     }
     if target_id is not None:
-        defaults["target_type"] = "contact"
+        defaults["target_type"] = target_type or "contact"
         defaults["target_id"] = str(target_id)
     defaults.update(overrides)
     defaults["payload"] = payload

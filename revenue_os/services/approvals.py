@@ -14,10 +14,12 @@ from revenue_os.database import SessionLocal
 from revenue_os.models.approvals import ApprovalRequest
 from revenue_os.services.activity_log import log_agent_action
 from revenue_os.services.approval_request_identity import (
+    CAMPAIGN_FAMILIES,
     FAMILY_BOOK_MEETING,
     FAMILY_PROACTIVE_EMAIL,
     STATUS_PENDING,
     STATUS_SUPERSEDED,
+    TARGET_TYPE_MARKETING_CAMPAIGN,
     TERMINAL_STATUSES,
     build_logical_key,
     classify_approval_family,
@@ -349,6 +351,7 @@ def get_or_create_pending_approval(
         organization_id=str(organization_id or merged_payload.get("organization_id") or ""),
         target_id=target_id,
         payload=merged_payload,
+        target_type=target_type,
     )
     merged_payload["organization_id"] = org_id
     if family == FAMILY_BOOK_MEETING:
@@ -356,6 +359,18 @@ def get_or_create_pending_approval(
         # for a booking approval to be executable/meaningful.
         if not merged_payload.get("selected_slot_start") or not merged_payload.get("selected_slot_end"):
             raise ValueError("Booking approval requires selected_slot_start/end")
+    if family in CAMPAIGN_FAMILIES:
+        # Bound to a real MarketingCampaign.id — never fabricate from contact_id.
+        campaign_id = str(merged_payload.get("campaign_id") or "").strip()
+        if not campaign_id and str(target_type or "") == TARGET_TYPE_MARKETING_CAMPAIGN:
+            campaign_id = str(target_id or "").strip()
+        if not campaign_id:
+            raise ValueError("Campaign approval requires campaign_id")
+        merged_payload["campaign_id"] = campaign_id
+        # Strip accidental contact scoping so broadcast identity cannot drift.
+        merged_payload.pop("contact_id", None)
+        target_type = TARGET_TYPE_MARKETING_CAMPAIGN
+        target_id = campaign_id
     merged_payload.setdefault(
         "material_fingerprint",
         material_consent_fingerprint(family, merged_payload),
@@ -365,6 +380,17 @@ def get_or_create_pending_approval(
     session = db or SessionLocal()
     superseded_ids: list[str] = []
     try:
+        if family in CAMPAIGN_FAMILIES:
+            from revenue_os.services.marketing_campaign_approval import (
+                require_campaign_bound_to_org,
+            )
+
+            require_campaign_bound_to_org(
+                session,
+                organization_id=org_id,
+                campaign_id=str(merged_payload["campaign_id"]),
+            )
+
         fp = material_consent_fingerprint(family, merged_payload)
         result: dict[str, Any] | None = None
         for _attempt in range(3):

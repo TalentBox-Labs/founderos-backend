@@ -59,6 +59,7 @@ from revenue_os.models.seo import SEOKeyword, SEORankCheck
 from revenue_os.models.agents import AgentRegistryRecord, AgentMessageRecord
 from revenue_os.models.integrations import ConnectorCredentialRecord, OrganizationIntegrationBinding
 from revenue_os.models.analytics_depth import MarketingSpendRecord
+from revenue_os.models.marketing import MarketingCampaign
 
 __all__ = [
     "Company",
@@ -116,4 +117,5 @@ __all__ = [
     "ConnectorCredentialRecord",
     "OrganizationIntegrationBinding",
     "MarketingSpendRecord",
+    "MarketingCampaign",
 ]
