@@ -478,7 +478,7 @@ def job_sync_gmail_inbox() -> dict[str, Any]:
         for organization_id in orgs or []:
 
             def _exec(_work, oid=organization_id):  # noqa: ANN001
-                return sync_inbox(organization_ids=[oid])
+                return sync_inbox(organization_id=oid)
 
             work = orchestrate_claimed(
                 db,

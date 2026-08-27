@@ -582,6 +582,25 @@ def integrations_health(
     }
 
 
+def _gmail_oauth_organization_id(*, state: str | None = None) -> str | None:
+    """Resolve tenant for Gmail OAuth from state and/or authenticated session.
+
+    Tenantless context must never persist NULL-org (global) Gmail credentials.
+    """
+    import uuid as uuid_lib
+
+    session_org = _integration_org_id()
+    state_org = None
+    if state is not None and str(state).strip():
+        try:
+            state_org = str(uuid_lib.UUID(str(state).strip()))
+        except ValueError:
+            return None
+    if state_org and session_org and state_org != str(session_org):
+        return None
+    return state_org or (str(session_org) if session_org else None)
+
+
 @router.get("/gmail/authorize", tags=["integrations"])
 def gmail_authorize(_: str | None = Depends(_verify_api_key)) -> dict[str, Any]:
     """Build the Google consent URL for the founder to open and approve."""
@@ -589,18 +608,31 @@ def gmail_authorize(_: str | None = Depends(_verify_api_key)) -> dict[str, Any]:
     from revenue_os.services.credentials_vault import load_credentials
 
     org_id = _integration_org_id()
-    config = load_credentials("gmail", organization_id=org_id)
+    if not org_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Organization context required to authorize Gmail.",
+        )
+    config = load_credentials(
+        "gmail", organization_id=org_id, allow_global_fallback=False
+    )
     if not config or not config.get("client_id") or not config.get("redirect_uri"):
         raise HTTPException(
             status_code=400,
             detail="Save the Gmail OAuth client ID, secret, and redirect URI first.",
         )
-    url = build_authorize_url(config["client_id"], config["redirect_uri"])
-    return {"ok": True, "authorize_url": url}
+    url = build_authorize_url(
+        config["client_id"], config["redirect_uri"], state=str(org_id)
+    )
+    return {"ok": True, "authorize_url": url, "organization_id": str(org_id)}
 
 
 @router.get("/gmail/callback", tags=["integrations"])
-def gmail_callback(code: str | None = None, error: str | None = None) -> Any:
+def gmail_callback(
+    code: str | None = None,
+    error: str | None = None,
+    state: str | None = None,
+) -> Any:
     """OAuth redirect target — exchanges the code for tokens and saves them.
 
     This is opened directly by the browser (not called via the API client),
@@ -625,16 +657,26 @@ def gmail_callback(code: str | None = None, error: str | None = None) -> Any:
     if not code:
         return _page("Missing authorization code.", ok=False)
 
-    org_id = _integration_org_id()
-    config = load_credentials("gmail", organization_id=org_id)
-    if not config:
-        return _page("Gmail OAuth client is not configured.", ok=False)
+    org_id = _gmail_oauth_organization_id(state=state)
+    if not org_id:
+        return _page(
+            "Organization context required — Gmail was not connected. "
+            "Re-open authorize from a signed-in organization session.",
+            ok=False,
+        )
 
-    tokens = exchange_code_for_tokens(code, config["client_id"], config["client_secret"], config["redirect_uri"])
+    config = load_credentials(
+        "gmail", organization_id=org_id, allow_global_fallback=False
+    )
+    if not config:
+        return _page("Gmail OAuth client is not configured for this organization.", ok=False)
+
+    tokens = exchange_code_for_tokens(
+        code, config["client_id"], config["client_secret"], config["redirect_uri"]
+    )
     if not tokens.get("ok"):
         return _page(f"Gmail connection failed: {tokens.get('error')}", ok=False)
 
-    org_id = _integration_org_id()
     save_credentials(
         "gmail",
         "email",
@@ -646,7 +688,13 @@ def gmail_callback(code: str | None = None, error: str | None = None) -> Any:
 
 @router.post("/gmail/sync", tags=["integrations"])
 def gmail_sync_now(_: str | None = Depends(_verify_api_key)) -> dict[str, Any]:
-    """Manually trigger a Gmail inbox sync (also runs automatically via the heartbeat)."""
-    from revenue_os.scheduler import scheduler
+    """Manually trigger Gmail inbox sync for the authenticated organization only."""
+    from revenue_os.integrations.gmail_sync import sync_inbox
 
-    return scheduler.run_job_now("sync_gmail_inbox")
+    org_id = _integration_org_id()
+    if not org_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Organization context required for Gmail sync.",
+        )
+    return sync_inbox(organization_id=str(org_id))

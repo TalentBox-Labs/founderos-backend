@@ -6,6 +6,11 @@ API (`gmail.readonly` scope). Matched messages are logged to the sending
 contact's timeline; unmatched senders are skipped rather than dumped in as
 noise — this is about aligning mail to an existing account, not an inbox
 importer.
+
+Tenant contract (P0):
+  organization_id → tenant-scoped vault credentials → mailbox →
+  Contact(email AND organization_id) → tenant-scoped activity/dedupe.
+Missing organization_id fails closed. No global credential fallback.
 """
 
 from __future__ import annotations
@@ -27,10 +32,15 @@ _MAX_MESSAGES_PER_SYNC = 25
 CONNECTOR_NAME = "gmail"
 
 
-def _vault_config() -> dict[str, Any] | None:
+def _vault_config(organization_id: str) -> dict[str, Any] | None:
+    """Load Gmail credentials for one organization only — never NULL-org global."""
     from revenue_os.services.credentials_vault import load_credentials
 
-    return load_credentials(CONNECTOR_NAME)
+    return load_credentials(
+        CONNECTOR_NAME,
+        organization_id=organization_id,
+        allow_global_fallback=False,
+    )
 
 
 def build_authorize_url(client_id: str, redirect_uri: str, state: str = "") -> str:
@@ -123,11 +133,33 @@ def _get_message(access_token: str, message_id: str) -> dict[str, Any]:
     return resp.json()
 
 
-def sync_inbox(*, organization_ids: list[str] | None = None) -> dict[str, Any]:
+def _resolve_sync_organization_id(
+    *,
+    organization_id: str | None,
+    organization_ids: list[str] | None,
+) -> str | None:
+    """Require exactly one tenant. Multi-org batch mapping is forbidden."""
+    if organization_id is not None and str(organization_id).strip():
+        if organization_ids and len(organization_ids) > 1:
+            return None
+        return str(organization_id).strip()
+    if organization_ids is None:
+        return None
+    cleaned = [str(o).strip() for o in organization_ids if o is not None and str(o).strip()]
+    if len(cleaned) == 1:
+        return cleaned[0]
+    return None
+
+
+def sync_inbox(
+    *,
+    organization_id: str | None = None,
+    organization_ids: list[str] | None = None,
+) -> dict[str, Any]:
     """Pull recent inbox messages and log matched-contact ones to their timeline.
 
-    ACP-1: commercial contact matching requires explicit organization_ids.
-    Without authorized orgs, fail closed (no global Contact email scan).
+    Requires an explicit organization_id (single tenant). organization_ids with
+    exactly one entry is accepted for call-site compatibility; empty/multi fails closed.
     """
     from revenue_os.services.acp1_autonomous_boundary import (
         BLOCKED_MISSING_TENANT,
@@ -136,55 +168,87 @@ def sync_inbox(*, organization_ids: list[str] | None = None) -> dict[str, Any]:
         org_uuid_or_none,
     )
 
-    if not organization_ids:
+    resolved_org = _resolve_sync_organization_id(
+        organization_id=organization_id,
+        organization_ids=organization_ids,
+    )
+    if not resolved_org:
         return log_autonomous_blocked(
             actor="heartbeat",
             action_type="gmail_sync_blocked",
             reason=BLOCKED_MISSING_TENANT,
-            detail={"note": "Gmail sync requires explicit autonomous organization scope"},
+            detail={
+                "note": "Gmail sync requires explicit single-organization scope",
+                "organization_id": organization_id,
+                "organization_ids": organization_ids,
+            },
         )
 
-    config = _vault_config()
-    if not config or not config.get("refresh_token"):
-        return {"ok": False, "reason": "Gmail is not connected — connect it on the Integrations page."}
+    org_uuid = org_uuid_or_none(resolved_org)
+    if org_uuid is None:
+        return log_autonomous_blocked(
+            actor="heartbeat",
+            action_type="gmail_sync_blocked",
+            reason=BLOCKED_MISSING_TENANT,
+            detail={"note": "No valid organization UUID for Gmail sync"},
+        )
 
-    refreshed = _refresh_access_token(config["client_id"], config["client_secret"], config["refresh_token"])
+    config = _vault_config(resolved_org)
+    if not config or not config.get("refresh_token"):
+        return {
+            "ok": False,
+            "reason": "Gmail is not connected for this organization — connect it on the Integrations page.",
+            "organization_id": resolved_org,
+        }
+
+    refreshed = _refresh_access_token(
+        config["client_id"], config["client_secret"], config["refresh_token"]
+    )
     if not refreshed.get("ok"):
-        return {"ok": False, "reason": f"Could not refresh Gmail access token: {refreshed.get('error')}"}
+        return {
+            "ok": False,
+            "reason": f"Could not refresh Gmail access token: {refreshed.get('error')}",
+            "organization_id": resolved_org,
+        }
     access_token = refreshed["access_token"]
 
     try:
         message_ids = _list_message_ids(access_token, _MAX_MESSAGES_PER_SYNC)
     except Exception as e:
         logger.warning(f"Gmail message list failed: {e}")
-        return {"ok": False, "reason": str(e)}
+        return {"ok": False, "reason": str(e), "organization_id": resolved_org}
 
     from revenue_os.database import SessionLocal
     from revenue_os.models.activity import Activity, ActivityType, EmailActivity
     from revenue_os.models.contact import Contact
     from revenue_os.services.activity_log import log_agent_action
 
-    org_uuids = [u for u in (org_uuid_or_none(o) for o in organization_ids) if u is not None]
-    if not org_uuids:
-        return log_autonomous_blocked(
-            actor="heartbeat",
-            action_type="gmail_sync_blocked",
-            reason=BLOCKED_MISSING_TENANT,
-            detail={"note": "No valid organization UUIDs for Gmail sync"},
-        )
-
     db = SessionLocal()
     checked = matched = created = 0
     try:
+        # Dedupe only against EmailActivity rows already attributed to this org's contacts.
         already_synced = {
-            row.message_id for row in
-            db.query(EmailActivity.message_id).filter(EmailActivity.message_id.in_(message_ids)).all()
+            row.message_id
+            for row in (
+                db.query(EmailActivity.message_id)
+                .join(Activity, EmailActivity.activity_id == Activity.id)
+                .join(Contact, Activity.contact_id == Contact.id)
+                .filter(
+                    EmailActivity.message_id.in_(message_ids),
+                    Contact.organization_id == org_uuid,
+                )
+                .all()
+            )
         }
         contacts_by_email = {
             c.email.lower(): c
             for c in db.query(Contact)
-            .filter(Contact.email.isnot(None), Contact.organization_id.in_(org_uuids))
+            .filter(
+                Contact.email.isnot(None),
+                Contact.organization_id == org_uuid,
+            )
             .all()
+            if c.email
         }
 
         for message_id in message_ids:
@@ -204,7 +268,9 @@ def sync_inbox(*, organization_ids: list[str] | None = None) -> dict[str, Any]:
                 continue  # not a known in-scope contact — skip rather than dump inbox noise
 
             org_id = str(contact.organization_id) if contact.organization_id else None
-            if org_id is None or not assert_contact_org(contact, org_id):
+            if org_id is None or org_id != resolved_org:
+                continue
+            if not assert_contact_org(contact, resolved_org):
                 continue
 
             matched += 1
@@ -227,7 +293,7 @@ def sync_inbox(*, organization_ids: list[str] | None = None) -> dict[str, Any]:
                 action_type="gmail_inbound_matched",
                 target_type="contact",
                 target_id=str(contact.id),
-                organization_id=org_id,
+                organization_id=resolved_org,
                 detail={"message_id": message_id},
             )
 
@@ -240,5 +306,6 @@ def sync_inbox(*, organization_ids: list[str] | None = None) -> dict[str, Any]:
         "checked": checked,
         "matched": matched,
         "created": created,
-        "organizations": list(organization_ids),
+        "organization_id": resolved_org,
+        "organizations": [resolved_org],
     }

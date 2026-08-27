@@ -377,6 +377,7 @@ def test_gmail_sync_requires_organization_ids(tenant_db):
 
     result = sync_inbox(organization_ids=[])
     assert result.get("blocked") is True
+    assert sync_inbox(organization_id=None).get("blocked") is True
 
 
 def test_propose_cannot_call_decide_via_hermes_registry():
