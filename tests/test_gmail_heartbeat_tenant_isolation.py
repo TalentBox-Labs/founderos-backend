@@ -434,14 +434,15 @@ def test_tenantless_oauth_callback_refuses_global_persist(
         db.close()
 
 
-def test_oauth_callback_state_binds_org(
+def test_oauth_callback_rejects_unsigned_state_without_session(
     client: TestClient, gmail_db, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """P1 fix: raw organization UUID in state is not tenant authority."""
     _seed_shared_email_tenants(gmail_db)
     monkeypatch.setattr(integrations_mod, "_integration_org_id", lambda: None)
     monkeypatch.setattr(
         "revenue_os.integrations.gmail_sync.exchange_code_for_tokens",
-        lambda *a, **k: {"ok": True, "refresh_token": "refresh-from-oauth-a"},
+        lambda *a, **k: {"ok": True, "refresh_token": "should-not-persist"},
     )
 
     r = client.get(
@@ -449,13 +450,12 @@ def test_oauth_callback_state_binds_org(
         params={"code": "abc", "state": str(_ORG_A)},
     )
     assert r.status_code == 200
-    assert "connected successfully" in r.text.lower()
+    assert "Organization context required" in r.text
     cfg = load_credentials(
         "gmail", organization_id=str(_ORG_A), allow_global_fallback=False
     )
     assert cfg is not None
-    assert cfg["refresh_token"] == "refresh-from-oauth-a"
-    # Org B untouched.
+    assert cfg["refresh_token"] == "refresh-a"
     cfg_b = load_credentials(
         "gmail", organization_id=str(_ORG_B), allow_global_fallback=False
     )

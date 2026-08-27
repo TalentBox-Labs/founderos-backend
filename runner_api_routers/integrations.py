@@ -4,9 +4,14 @@ from __future__ import annotations
 
 import logging
 import os
+import uuid as uuid_lib
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
+from jose import JWTError, jwt
+
+from revenue_os.config import settings
 from revenue_os.database import SessionLocal
 from revenue_os.integrations.email import EmailNotifier, ScheduledEmailQueue, EmailTemplate
 from revenue_os.integrations.webhooks import WebhookManager, WebhookEventType
@@ -182,6 +187,11 @@ def configure_connector(
     from revenue_os.services.credentials_vault import save_credentials
 
     org_id = _integration_org_id()
+    if connector_name == "gmail" and not org_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Organization context required to configure Gmail.",
+        )
     save_credentials(connector_name, catalog_entry["category"], config, organization_id=org_id)
     return {"ok": True, "message": f"{catalog_entry['label']} configured"}
 
@@ -582,23 +592,63 @@ def integrations_health(
     }
 
 
-def _gmail_oauth_organization_id(*, state: str | None = None) -> str | None:
-    """Resolve tenant for Gmail OAuth from state and/or authenticated session.
+_GMAIL_OAUTH_STATE_PURPOSE = "gmail_oauth"
+_GMAIL_OAUTH_STATE_TTL = timedelta(minutes=15)
 
-    Tenantless context must never persist NULL-org (global) Gmail credentials.
-    """
-    import uuid as uuid_lib
 
-    session_org = _integration_org_id()
-    state_org = None
-    if state is not None and str(state).strip():
-        try:
-            state_org = str(uuid_lib.UUID(str(state).strip()))
-        except ValueError:
-            return None
-    if state_org and session_org and state_org != str(session_org):
+def _sign_gmail_oauth_state(organization_id: str) -> str:
+    """Signed OAuth correlation token — not tenant authority by itself."""
+    now = datetime.now(timezone.utc)
+    payload = {
+        "purpose": _GMAIL_OAUTH_STATE_PURPOSE,
+        "organization_id": str(organization_id),
+        "nonce": str(uuid_lib.uuid4()),
+        "iat": now,
+        "exp": now + _GMAIL_OAUTH_STATE_TTL,
+    }
+    return jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
+
+
+def _decode_gmail_oauth_state(state: str | None) -> str | None:
+    """Return organization_id from a valid signed Gmail OAuth state, else None."""
+    if not state or not str(state).strip():
         return None
-    return state_org or (str(session_org) if session_org else None)
+    try:
+        payload = jwt.decode(
+            str(state).strip(), settings.SECRET_KEY, algorithms=["HS256"]
+        )
+    except JWTError:
+        return None
+    if payload.get("purpose") != _GMAIL_OAUTH_STATE_PURPOSE:
+        return None
+    raw_org = payload.get("organization_id")
+    if not raw_org:
+        return None
+    try:
+        return str(uuid_lib.UUID(str(raw_org)))
+    except ValueError:
+        return None
+
+
+def _gmail_oauth_persist_organization_id(*, state: str | None = None) -> str | None:
+    """Authenticated session is tenant authority; signed state is CSRF/correlation only.
+
+    State alone never grants persist rights. Missing session fails closed.
+    """
+    session_org = _integration_org_id()
+    if not session_org:
+        return None
+    persist_org = str(session_org)
+    try:
+        persist_org = str(uuid_lib.UUID(persist_org))
+    except ValueError:
+        return None
+    state_org = _decode_gmail_oauth_state(state)
+    if not state_org:
+        return None
+    if state_org != persist_org:
+        return None
+    return persist_org
 
 
 @router.get("/gmail/authorize", tags=["integrations"])
@@ -621,8 +671,9 @@ def gmail_authorize(_: str | None = Depends(_verify_api_key)) -> dict[str, Any]:
             status_code=400,
             detail="Save the Gmail OAuth client ID, secret, and redirect URI first.",
         )
+    signed_state = _sign_gmail_oauth_state(str(org_id))
     url = build_authorize_url(
-        config["client_id"], config["redirect_uri"], state=str(org_id)
+        config["client_id"], config["redirect_uri"], state=signed_state
     )
     return {"ok": True, "authorize_url": url, "organization_id": str(org_id)}
 
@@ -637,6 +688,9 @@ def gmail_callback(
 
     This is opened directly by the browser (not called via the API client),
     so it returns a small HTML page instead of JSON.
+
+    Tenant authority is the authenticated Founder OS session organization.
+    Signed OAuth state is CSRF/correlation only and never grants org rights alone.
     """
     from fastapi.responses import HTMLResponse
 
@@ -657,7 +711,7 @@ def gmail_callback(
     if not code:
         return _page("Missing authorization code.", ok=False)
 
-    org_id = _gmail_oauth_organization_id(state=state)
+    org_id = _gmail_oauth_persist_organization_id(state=state)
     if not org_id:
         return _page(
             "Organization context required — Gmail was not connected. "
