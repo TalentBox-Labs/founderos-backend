@@ -27,6 +27,7 @@ from starlette.datastructures import UploadFile
 from revenue_os.auth import create_access_token, hash_password, verify_password
 from revenue_os.config import settings
 from revenue_os.database import SessionLocal
+from revenue_os.db_url import sanitize_exception_for_log
 from revenue_os.models.user import User
 from revenue_os.services.identity_context import (
     AuthMethod,
@@ -385,8 +386,11 @@ def _authenticate(email: str, password: str) -> User:
     except HTTPException:
         raise
     except Exception as exc:
-        logger.warning("Login lookup failed")
-        raise HTTPException(status_code=503, detail="Identity store unavailable") from exc
+        logger.warning(
+            "Login lookup failed: type=%s",
+            sanitize_exception_for_log(exc),
+        )
+        raise HTTPException(status_code=503, detail="Identity store unavailable") from None
     finally:
         db.close()
 
@@ -431,9 +435,24 @@ def _revoke_request_token(request: Request) -> None:
 
 def bootstrap_owner_if_needed() -> None:
     """Create the initial OWNER from env if that email is absent. Never logs the password."""
+    from revenue_os.db_url import bootstrap_password_acceptable
+
     email = os.environ.get(ENV_BOOTSTRAP_EMAIL, "").strip().lower()
     password = os.environ.get(ENV_BOOTSTRAP_PASSWORD, "")
+    # Partial bootstrap env is a fail-closed misconfiguration.
+    if bool(email) ^ bool(password.strip()):
+        logger.error(
+            "Identity bootstrap refused: both FOUNDER_OS_BOOTSTRAP_EMAIL and "
+            "FOUNDER_OS_BOOTSTRAP_PASSWORD must be set together (or both omitted)"
+        )
+        return
     if not email or not password:
+        return
+    if not bootstrap_password_acceptable(password):
+        logger.error(
+            "Identity bootstrap refused: FOUNDER_OS_BOOTSTRAP_PASSWORD is missing, "
+            "too short, or matches a forbidden default/placeholder value"
+        )
         return
     name = (
         os.environ.get(ENV_BOOTSTRAP_NAME)
@@ -458,12 +477,14 @@ def bootstrap_owner_if_needed() -> None:
         db.add(user)
         db.commit()
         logger.info("Bootstrapped OWNER identity for %s", email)
-    except Exception:
-        logger.exception("Identity bootstrap failed")
+    except Exception as exc:
+        logger.error(
+            "Identity bootstrap failed: type=%s",
+            sanitize_exception_for_log(exc),
+        )
         db.rollback()
     finally:
         db.close()
-
 
 def _wants_html(request: Request) -> bool:
     accept = (request.headers.get("accept") or "").lower()

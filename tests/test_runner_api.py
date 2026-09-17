@@ -21,13 +21,24 @@ def client() -> TestClient:
 
 
 def test_health_returns_ok(client: TestClient) -> None:
-    """Canonical GET /health is service liveness ({status, service})."""
+    """Canonical GET /health is process liveness only (database not checked)."""
     r = client.get("/health")
     assert r.status_code == 200
     data = r.json()
     assert data["status"] == "ok"
     assert data["service"] == "WorkCrew CMS OS"
+    assert data["check"] == "liveness"
+    assert data["database"] == "not_checked"
     assert "project_root" not in data
+
+
+def test_health_ready_reports_database(client: TestClient) -> None:
+    r = client.get("/health/ready")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["status"] == "ok"
+    assert data["check"] == "readiness"
+    assert data["database"] == "ok"
 
 
 def test_health_debug_returns_diagnostics(client: TestClient) -> None:
@@ -37,6 +48,7 @@ def test_health_debug_returns_diagnostics(client: TestClient) -> None:
     data = r.json()
     assert data["status"] == "ok"
     assert data["service"] == "WorkCrew CMS OS"
+    assert data["database"] == "not_checked"
     assert "project_root" in data
     assert "python" in data
 

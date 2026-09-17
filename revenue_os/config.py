@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from dotenv import load_dotenv
+
+from revenue_os.db_url import validate_database_url, validate_secret_key
 
 load_dotenv()
 
@@ -15,11 +17,8 @@ class Settings:
     PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent
     DEBUG: bool = os.getenv("REVENUE_OS_DEBUG", "false").lower() == "true"
 
-    # Database
-    DATABASE_URL: str = os.getenv(
-        "DATABASE_URL",
-        "postgresql://localhost:5432/revenue_os",
-    )
+    # Database — no silent localhost default; missing/invalid fails closed at import.
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "")
     DATABASE_ECHO: bool = os.getenv("DATABASE_ECHO", "false").lower() == "true"
 
     # AI
@@ -42,12 +41,8 @@ class Settings:
     )
 
     def __post_init__(self):
-        if not self.SECRET_KEY or self.SECRET_KEY == "change-me-in-production":
-            raise ValueError(
-                "FATAL: SECRET_KEY must be set to a strong random value. "
-                "Set the SECRET_KEY environment variable before starting the application. "
-                "Generate with: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
-            )
+        self.SECRET_KEY = validate_secret_key(self.SECRET_KEY)
+        self.DATABASE_URL = validate_database_url(self.DATABASE_URL)
 
     # External integrations
     SLACK_BOT_TOKEN: str = os.getenv("SLACK_BOT_TOKEN", "")

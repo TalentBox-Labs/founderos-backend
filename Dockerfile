@@ -26,7 +26,9 @@ COPY --from=frontend-build /build/dist ./frontend/dist
 
 EXPOSE 8000
 
+# Shell-form HEALTHCHECK so ${PORT} expands at probe time (Render sets PORT).
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
-    CMD curl -fsS http://localhost:8000/health || exit 1
+    CMD curl -fsS "http://127.0.0.1:${PORT:-8000}/health" || exit 1
 
+# Bind all interfaces; PORT is supplied by Render (defaults locally to 8000).
 CMD ["sh", "-c", "uvicorn runner_api:app --host 0.0.0.0 --port ${PORT:-8000}"]

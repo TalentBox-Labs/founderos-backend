@@ -1,33 +1,49 @@
-# Render.com blueprint — deploys API + CRM frontend as one Docker service
-# with a managed PostgreSQL database.
+# ZERO-COST BASIC staging — Blueprint deployment is PROHIBITED for this runbook.
 #
-# Usage: push this repo to GitHub, then in Render choose
-# "New > Blueprint" and point it at the repository.
+# Hard cost contract: $0 incremental. No payment method. No paid SKUs.
+#
+# Preferred path (operator-authorized later):
+#   Manual Render Free Web Service + external Neon Free PostgreSQL.
+#   Do NOT attach a Render managed database.
+#   Do NOT select Starter/Standard/Pro compute.
+#
+# This file is intentionally Free-only and database-less as a footgun mitigation
+# if someone accidentally starts a Blueprint flow. It is NOT the approved
+# deployment mechanism. Auto-deploy is off. Heartbeat and n8n remain disabled.
+#
+# SECRET_KEY / DATABASE_URL / bootstrap password must be set manually in the
+# dashboard (sync: false). Never commit real secrets.
 
 services:
   - type: web
-    name: founderos-backend
+    name: founderos-staging
     runtime: docker
-    plan: starter
+    plan: free
+    autoDeploy: false
     healthCheckPath: /health
     envVars:
       - key: SECRET_KEY
-        generateValue: true
-      - key: RUNNER_API_KEY
-        generateValue: true          # this is the team login key for the CRM UI
+        sync: false
       - key: DATABASE_URL
-        fromDatabase:
-          name: workcrew-crm-db
-          property: connectionString
-      - key: OPENAI_API_KEY
-        sync: false                  # set manually in the dashboard if using LLM features
+        sync: false
+      - key: RUNNER_API_KEY
+        sync: false
       - key: HEARTBEAT_ENABLED
-        value: "1"
-      - key: N8N_WEBHOOK_BASE_URL
-        sync: false                  # set when you connect an n8n instance
-      - key: N8N_INBOUND_SECRET
-        generateValue: true
+        value: "0"
+      - key: N8N_BRIDGE_ENABLED
+        value: "0"
+      - key: FOUNDER_OS_COOKIE_SECURE
+        value: "true"
+      - key: FOUNDER_OS_REQUIRE_LOGIN
+        value: "true"
+      - key: FOUNDER_OS_BOOTSTRAP_EMAIL
+        sync: false
+      - key: FOUNDER_OS_BOOTSTRAP_PASSWORD
+        sync: false
+      - key: FOUNDER_OS_BOOTSTRAP_NAME
+        sync: false
+      - key: FOUNDER_OS_BOOTSTRAP_ORG_NAME
+        sync: false
 
-databases:
-  - name: workcrew-crm-db
-    plan: starter
+# No managed database resources in this blueprint — Neon Free is external;
+# Render Postgres is forbidden under the zero-cost contract.

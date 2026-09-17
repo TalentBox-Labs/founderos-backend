@@ -435,34 +435,61 @@ def _migrate_connector_credentials_tenant(conn, inspector) -> None:  # noqa: ANN
 @app.on_event("startup")
 async def _startup_persistence_and_heartbeat() -> None:
     """Create any missing tables, then start the autonomous heartbeat."""
+    from revenue_os.db_url import redact_database_url, sanitize_exception_for_log
+
     try:
         import revenue_os.models  # noqa: F401 - registers all tables on Base.metadata
+        from revenue_os.config import settings
         from revenue_os.database import engine
         from revenue_os.models.base import Base
 
         Base.metadata.create_all(bind=engine)
-        logger.info("Database tables verified/created")
+        logger.info(
+            "Database tables verified/created (url=%s)",
+            redact_database_url(settings.DATABASE_URL),
+        )
     except Exception as e:
-        logger.error(f"Table creation failed (continuing): {e}")
+        logger.error(
+            "Table creation failed (fail-closed): type=%s",
+            sanitize_exception_for_log(e),
+        )
+        # Do not chain the original exception — drivers may embed DSN/password.
+        raise RuntimeError(
+            "FATAL: database schema bootstrap failed. "
+            "Refusing to continue with an unverified schema."
+        ) from None
 
     try:
         _migrate_missing_columns()
     except Exception as e:
-        logger.error(f"Column migration failed (continuing): {e}")
+        logger.error(
+            "Column migration failed (fail-closed): type=%s",
+            sanitize_exception_for_log(e),
+        )
+        raise RuntimeError(
+            "FATAL: database soft-migration failed. "
+            "Refusing to continue with an incomplete schema."
+        ) from None
 
     try:
         from revenue_os.scheduler import initialize_heartbeat
 
         initialize_heartbeat()
     except Exception as e:
-        logger.error(f"Heartbeat initialization failed: {e}")
+        logger.error(
+            "Heartbeat initialization failed: type=%s",
+            sanitize_exception_for_log(e),
+        )
 
     try:
         from revenue_os.integrations.n8n import initialize_n8n_bridge
 
         initialize_n8n_bridge()
     except Exception as e:
-        logger.error(f"n8n bridge initialization failed: {e}")
+        logger.error(
+            "n8n bridge initialization failed: type=%s",
+            sanitize_exception_for_log(e),
+        )
 
     try:
         from revenue_os.agents.orchestration import seed_platform_agents, WorkflowOrchestrator
@@ -470,28 +497,40 @@ async def _startup_persistence_and_heartbeat() -> None:
         seed_platform_agents()
         WorkflowOrchestrator.seed_revenue_workflows()
     except Exception as e:
-        logger.error(f"Agent registry seeding failed: {e}")
+        logger.error(
+            "Agent registry seeding failed: type=%s",
+            sanitize_exception_for_log(e),
+        )
 
     try:
         from revenue_os.services.credentials_vault import hydrate_all_connectors
 
         hydrate_all_connectors()
     except Exception as e:
-        logger.error(f"Connector hydration failed: {e}")
+        logger.error(
+            "Connector hydration failed: type=%s",
+            sanitize_exception_for_log(e),
+        )
 
     try:
         from runner_api_routers.identity import bootstrap_owner_if_needed
 
         bootstrap_owner_if_needed()
     except Exception as e:
-        logger.error(f"Identity bootstrap failed (continuing): {e}")
+        logger.error(
+            "Identity bootstrap failed (continuing): type=%s",
+            sanitize_exception_for_log(e),
+        )
 
     try:
         from revenue_os.services.tenant_bootstrap import bootstrap_tenant_if_needed
 
         bootstrap_tenant_if_needed()
     except Exception as e:
-        logger.error(f"Tenant bootstrap failed (continuing): {e}")
+        logger.error(
+            "Tenant bootstrap failed (continuing): type=%s",
+            sanitize_exception_for_log(e),
+        )
 
 
 @app.on_event("shutdown")
