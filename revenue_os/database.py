@@ -4,13 +4,19 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from revenue_os.config import settings
+from revenue_os.db_url import assert_pool_within_limit
+
+# Hard ceiling for a single Render Free instance against Neon Free.
+POOL_SIZE = 10
+MAX_OVERFLOW = 20
+assert_pool_within_limit(POOL_SIZE, MAX_OVERFLOW, limit=30)
 
 engine = create_engine(
     settings.DATABASE_URL,
     echo=settings.DATABASE_ECHO,
     pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=20,
+    pool_size=POOL_SIZE,
+    max_overflow=MAX_OVERFLOW,
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

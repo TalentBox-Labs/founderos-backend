@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from runner_api_routers.content_studio import (
@@ -872,8 +872,17 @@ def page_analytics(request: Request) -> HTMLResponse:
 
 @router.get("/health")
 def health() -> dict[str, str]:
-    """Canonical service liveness check."""
-    return {"status": "ok", "service": "WorkCrew CMS OS"}
+    """Process liveness only — does NOT verify database connectivity.
+
+    Load balancers / Render healthCheckPath should use this endpoint.
+    Database readiness is exposed separately at GET /health/ready.
+    """
+    return {
+        "status": "ok",
+        "service": "WorkCrew CMS OS",
+        "check": "liveness",
+        "database": "not_checked",
+    }
 
 
 @router.get("/seo", response_class=HTMLResponse)
@@ -971,12 +980,59 @@ def health_debug() -> dict[str, str]:
     return {
         "status": "ok",
         "service": "WorkCrew CMS OS",
+        "check": "diagnostics",
+        "database": "not_checked",
         "project_root": str(PROJECT_ROOT),
         "python": sys.executable,
     }
 
 
+@router.get("/health/ready")
+def health_ready() -> JSONResponse:
+    """Database readiness probe — fails closed without disclosing credentials."""
+    from sqlalchemy import text
+
+    from revenue_os.database import SessionLocal
+    from revenue_os.db_url import sanitize_exception_for_log
+
+    try:
+        db = SessionLocal()
+        try:
+            db.execute(text("SELECT 1"))
+        finally:
+            db.close()
+    except Exception as exc:
+        # Do not use logger.exception / exc_info — driver errors may embed DSN secrets.
+        logger.error(
+            "Database readiness check failed (type=%s)",
+            sanitize_exception_for_log(exc),
+        )
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "unavailable",
+                "service": "WorkCrew CMS OS",
+                "check": "readiness",
+                "database": "unavailable",
+            },
+        )
+    return JSONResponse(
+        status_code=200,
+        content={
+            "status": "ok",
+            "service": "WorkCrew CMS OS",
+            "check": "readiness",
+            "database": "ok",
+        },
+    )
+
+
 @router.get("/api/v1/health")
 def api_health() -> dict[str, str]:
-    """Canonical API liveness check."""
-    return {"status": "ok", "service": "WorkCrew CMS OS API"}
+    """Canonical API liveness check (does not verify the database)."""
+    return {
+        "status": "ok",
+        "service": "WorkCrew CMS OS API",
+        "check": "liveness",
+        "database": "not_checked",
+    }
