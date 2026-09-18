@@ -13,20 +13,11 @@ jobs:
       matrix:
         python-version: ['3.11', '3.12', '3.13']
 
-    services:
-      postgres:
-        image: postgres:14
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: revenue_os
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+    # No Postgres service: the ordinary suite is SQLite-based via tests/conftest.py
+    # (setdefault DATABASE_URL=sqlite…). Do not inject a non-TLS postgresql:// URL —
+    # candidate fail-closed TLS validation correctly rejects that shape.
+    # Do not inject secrets.TEST_SECRET_KEY: the audited repo secret was <32 chars and
+    # blocked Settings import. Rely on conftest's ≥32 test-only SECRET_KEY default.
 
     steps:
     - uses: actions/checkout@v4
@@ -44,9 +35,9 @@ jobs:
     - name: Run tests
       run: |
         python -m pytest tests/ -v
-      env:
-        SECRET_KEY: ${{ secrets.TEST_SECRET_KEY }}
-        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/revenue_os
+      # Intentionally no SECRET_KEY / DATABASE_URL here.
+      # tests/conftest.py setdefaults provide test-only values that satisfy
+      # fail-closed validation without weakening production/staging contracts.
 
     - name: Verify fixture sync (no writes allowed)
       run: |
