@@ -31,6 +31,50 @@ def _as_utc(value: datetime) -> datetime:
     return value.astimezone(timezone.utc)
 
 
+def stage_jti_revocation(
+    db: Session,
+    jti: str,
+    expires_at: datetime,
+    *,
+    now: datetime | None = None,
+) -> None:
+    """Stage a JTI revocation on an open session (caller commits).
+
+    Idempotent for duplicate jti. Does not commit or close ``db``.
+    Raises SessionRevocationStoreUnavailable on store errors so callers
+    can fail closed without a partial commit.
+    """
+    cleaned = (jti or "").strip()
+    if not cleaned:
+        return
+    exp = _as_utc(expires_at)
+    stamp = _as_utc(now) if now is not None else datetime.now(timezone.utc)
+    try:
+        # Opportunistic cleanup of records that can no longer affect auth.
+        db.query(SessionRevocation).filter(SessionRevocation.expires_at <= stamp).delete(
+            synchronize_session=False
+        )
+        existing = db.get(SessionRevocation, cleaned)
+        if existing is not None:
+            if _as_utc(existing.expires_at) < exp:
+                existing.expires_at = exp
+            return
+        db.add(
+            SessionRevocation(
+                jti=cleaned,
+                expires_at=exp,
+                revoked_at=stamp,
+            )
+        )
+        db.flush()
+    except SQLAlchemyError as exc:
+        logger.warning("Session revocation stage failed")
+        raise SessionRevocationStoreUnavailable("revocation persist failed") from exc
+    except Exception as exc:
+        logger.warning("Session revocation stage failed")
+        raise SessionRevocationStoreUnavailable("revocation persist failed") from exc
+
+
 def revoke_jti(
     jti: str,
     expires_at: datetime,
@@ -42,28 +86,9 @@ def revoke_jti(
     if not cleaned:
         return
     factory = session_factory or _default_session_factory
-    exp = _as_utc(expires_at)
-    now = datetime.now(timezone.utc)
     db = factory()
     try:
-        # Opportunistic cleanup of records that can no longer affect auth.
-        db.query(SessionRevocation).filter(SessionRevocation.expires_at <= now).delete(
-            synchronize_session=False
-        )
-        existing = db.get(SessionRevocation, cleaned)
-        if existing is not None:
-            # Keep the later expiry if a stale shorter row somehow exists.
-            if _as_utc(existing.expires_at) < exp:
-                existing.expires_at = exp
-                db.commit()
-            return
-        db.add(
-            SessionRevocation(
-                jti=cleaned,
-                expires_at=exp,
-                revoked_at=now,
-            )
-        )
+        stage_jti_revocation(db, cleaned, expires_at)
         try:
             db.commit()
         except IntegrityError:

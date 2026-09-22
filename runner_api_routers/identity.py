@@ -27,7 +27,7 @@ from starlette.datastructures import UploadFile
 from revenue_os.auth import create_access_token, hash_password, verify_password
 from revenue_os.config import settings
 from revenue_os.database import SessionLocal
-from revenue_os.db_url import sanitize_exception_for_log
+from revenue_os.db_url import bootstrap_password_acceptable, sanitize_exception_for_log
 from revenue_os.models.user import User
 from revenue_os.services.identity_context import (
     AuthMethod,
@@ -43,6 +43,7 @@ from revenue_os.services.session_revocation import (
     SessionRevocationStoreUnavailable,
     is_jti_revoked,
     revoke_jti,
+    stage_jti_revocation,
 )
 from src.tools.editorial_approval import is_human_approver
 
@@ -75,6 +76,13 @@ class LoginJsonBody(BaseModel):
     email: str = Field(..., min_length=3, max_length=255)
     password: str = Field(..., min_length=1, max_length=1024)
     next: str | None = Field(default=None, max_length=512)
+
+
+class PasswordChangeBody(BaseModel):
+    """HUMAN self password change — target is the authenticated session only."""
+
+    current_password: str = Field(..., min_length=1, max_length=1024)
+    new_password: str = Field(..., min_length=1, max_length=1024)
 
 
 def current_request() -> Request | None:
@@ -623,6 +631,118 @@ async def api_login(request: Request) -> Response:
 def api_logout(request: Request) -> JSONResponse:
     _revoke_request_token(request)
     response = JSONResponse({"ok": True, "logged_out": True})
+    _clear_identity_cookie(response)
+    _clear_tenant_cookie(response)
+    return response
+
+
+def _require_human_session(request: Request) -> IdentityContext:
+    """HUMAN cookie session only. SERVICE/API-key and anonymous fail closed."""
+    ctx = identity_from_request(request)
+    if (
+        ctx is None
+        or ctx.principal_kind is not PrincipalKind.HUMAN
+        or not ctx.is_human
+        or not ctx.user_id
+    ):
+        raise HTTPException(status_code=401, detail="Authentication required")
+    return ctx
+
+
+def _password_change_rate_key(user_id: str) -> str:
+    return f"pwchange:{user_id}"
+
+
+def _new_password_acceptable(password: str) -> bool:
+    # Reuse audited bootstrap strength bar (min length + forbidden placeholders).
+    return bootstrap_password_acceptable(password)
+
+
+@router.post("/api/v1/identity/password")
+def api_change_password(request: Request, body: PasswordChangeBody) -> JSONResponse:
+    """Authenticated HUMAN changes their own password.
+
+    Authority: session cookie principal only. Body/query/header identity
+    assertions are ignored. SERVICE/API-key cannot invoke this endpoint.
+    Current password must verify. On success: hash update + current-session
+    JTI revocation commit atomically; identity cookie cleared.
+    """
+    ctx = _require_human_session(request)
+    rate_key = _password_change_rate_key(ctx.user_id or "")
+    if _login_blocked(rate_key):
+        raise HTTPException(status_code=429, detail="Too many attempts. Try later.")
+
+    if not _new_password_acceptable(body.new_password):
+        raise HTTPException(status_code=400, detail="Invalid new password")
+
+    if body.current_password == body.new_password:
+        raise HTTPException(status_code=400, detail="Invalid new password")
+
+    raw_cookie = request.cookies.get(IDENTITY_COOKIE) or ""
+    payload: dict[str, Any] = {}
+    jti: str | None = None
+    if raw_cookie:
+        try:
+            payload = jwt.decode(raw_cookie, settings.SECRET_KEY, algorithms=["HS256"])
+            maybe_jti = payload.get("jti")
+            if isinstance(maybe_jti, str) and maybe_jti.strip():
+                jti = maybe_jti.strip()
+        except JWTError:
+            raise HTTPException(status_code=401, detail="Authentication required") from None
+
+    db = SessionLocal()
+    try:
+        try:
+            uid = uuid.UUID(str(ctx.user_id))
+        except ValueError as exc:
+            raise HTTPException(status_code=401, detail="Authentication required") from exc
+
+        user = db.query(User).filter(User.id == uid).first()
+        if user is None or not user.is_active:
+            raise HTTPException(status_code=401, detail="Authentication required")
+
+        if not verify_password(body.current_password, user.hashed_password):
+            _record_failure(rate_key)
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+
+        if not is_human_approver(user.full_name or ""):
+            raise HTTPException(status_code=401, detail="Authentication required")
+
+        user.hashed_password = hash_password(body.new_password)
+
+        if jti is not None:
+            try:
+                stage_jti_revocation(db, jti, _token_expires_at(payload))
+            except SessionRevocationStoreUnavailable as exc:
+                db.rollback()
+                raise HTTPException(
+                    status_code=503,
+                    detail="Session revocation store unavailable",
+                ) from exc
+
+        db.commit()
+        _clear_failures(rate_key)
+        logger.info(
+            "HUMAN password changed user_id=%s jti_revoked=%s",
+            str(user.id),
+            "yes" if jti else "no",
+        )
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as exc:
+        db.rollback()
+        logger.warning(
+            "Password change failed: type=%s",
+            sanitize_exception_for_log(exc),
+        )
+        raise HTTPException(
+            status_code=503, detail="Identity store unavailable"
+        ) from None
+    finally:
+        db.close()
+
+    response = JSONResponse({"ok": True})
     _clear_identity_cookie(response)
     _clear_tenant_cookie(response)
     return response
