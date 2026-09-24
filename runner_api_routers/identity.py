@@ -211,6 +211,7 @@ def _clear_tenant_cookie(response: Response) -> None:
 
 def _issue_human_token(user: User) -> str:
     jti = str(uuid.uuid4())
+    token_version = int(getattr(user, "token_version", 0) or 0)
     return create_access_token(
         {
             "sub": str(user.id),
@@ -220,6 +221,7 @@ def _issue_human_token(user: User) -> str:
             "kind": PrincipalKind.HUMAN.value,
             "amr": "password",
             "jti": jti,
+            "tv": token_version,
             "iss": "founder_os_runner_api",
         }
     )
@@ -282,6 +284,14 @@ def identity_from_request(request: Request | None) -> IdentityContext | None:
         )
     user = _load_user(str(payload.get("sub") or "") or None)
     if user is None or not user.is_active:
+        return None
+    # Account-wide session epoch: missing/mismatched tv fails closed.
+    try:
+        claim_tv = int(payload["tv"]) if "tv" in payload else 0
+    except (TypeError, ValueError):
+        return None
+    current_tv = int(getattr(user, "token_version", 0) or 0)
+    if claim_tv != current_tv:
         return None
     name = (user.full_name or "").strip()
     human = bool(is_human_approver(name))
@@ -709,6 +719,7 @@ def api_change_password(request: Request, body: PasswordChangeBody) -> JSONRespo
             raise HTTPException(status_code=401, detail="Authentication required")
 
         user.hashed_password = hash_password(body.new_password)
+        user.token_version = int(user.token_version or 0) + 1
 
         if jti is not None:
             try:
@@ -723,8 +734,9 @@ def api_change_password(request: Request, body: PasswordChangeBody) -> JSONRespo
         db.commit()
         _clear_failures(rate_key)
         logger.info(
-            "HUMAN password changed user_id=%s jti_revoked=%s",
+            "HUMAN password changed user_id=%s token_version=%s jti_revoked=%s",
             str(user.id),
+            user.token_version,
             "yes" if jti else "no",
         )
     except HTTPException:

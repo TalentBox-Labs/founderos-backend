@@ -264,3 +264,40 @@ def bootstrap_password_acceptable(password: str | None) -> bool:
     if cleaned == unquote(cleaned) and cleaned.lower() in FORBIDDEN_BOOTSTRAP_PASSWORDS:
         return False
     return True
+
+
+def validate_recovery_secret(value: str | None) -> str:
+    """Fail closed for missing/weak FOUNDER_OS_RECOVERY_SECRET.
+
+    Independent of SECRET_KEY / DATABASE_URL / bootstrap password / Google secrets.
+    Same strength floor as SECRET_KEY (length + placeholder rejection).
+    """
+    if value is None:
+        raise ValueError(
+            "FATAL: FOUNDER_OS_RECOVERY_SECRET must be set to a strong random value. "
+            "Generate with: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
+        )
+    if value != value.strip():
+        raise ValueError(
+            "FATAL: FOUNDER_OS_RECOVERY_SECRET must not include leading or trailing whitespace."
+        )
+    cleaned = value.strip()
+    if not cleaned:
+        raise ValueError(
+            "FATAL: FOUNDER_OS_RECOVERY_SECRET must be set to a strong random value "
+            "(whitespace-only rejected)."
+        )
+    if cleaned.lower() in FORBIDDEN_SECRET_KEYS:
+        raise ValueError(
+            "FATAL: FOUNDER_OS_RECOVERY_SECRET matches a forbidden placeholder/default value."
+        )
+    if len(cleaned) < SECRET_KEY_MIN_LENGTH:
+        raise ValueError(
+            "FATAL: FOUNDER_OS_RECOVERY_SECRET must be at least "
+            f"{SECRET_KEY_MIN_LENGTH} characters after strip."
+        )
+    if len(set(cleaned)) == 1:
+        raise ValueError(
+            "FATAL: FOUNDER_OS_RECOVERY_SECRET must not be a repeated single character."
+        )
+    return cleaned
