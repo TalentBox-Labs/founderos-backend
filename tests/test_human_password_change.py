@@ -275,13 +275,12 @@ def test_g_current_session_revoked_after_change(
         db.close()
 
 
-def test_h_other_session_residual_not_revoked(
+def test_h_other_session_revoked_via_token_version(
     client: TestClient, owner_user: User
 ) -> None:
-    """Architecture is per-jti only — other sessions remain until expiry (residual debt)."""
+    """Password change bumps token_version — other sessions lose HUMAN authority."""
     _login(client)
     other = TestClient(app)
-    other.cookies.update(client.cookies)
     # Second independent session for same user.
     _login(other)
     other_token = _cookie_token(other)
@@ -294,9 +293,8 @@ def test_h_other_session_residual_not_revoked(
     )
     other.cookies.set(identity_mod.IDENTITY_COOKIE, other_token)
     me = other.get("/api/v1/identity/me").json()["identity"]
-    assert me["is_human"] is True
-    assert me["email"] == _EMAIL
-
+    assert me["principal_kind"] == "ANONYMOUS"
+    assert me["is_human"] is False
 
 def test_i_body_user_id_cannot_retarget(
     client: TestClient, owner_user: User, other_user: User, pw_db: sessionmaker

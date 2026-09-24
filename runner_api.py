@@ -347,6 +347,10 @@ def _migrate_missing_columns() -> None:
         "agent_action_log": [
             ("organization_id", "VARCHAR(36)"),
         ],
+        # Account-wide HUMAN session epoch for password change/recovery.
+        "users": [
+            ("token_version", "INTEGER DEFAULT 0 NOT NULL"),
+        ],
     }
 
     inspector = inspect(engine)
