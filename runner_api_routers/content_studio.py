@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from runner_api_routers.utils import (
     _read_tracker,
     _validate_week_id,
-    _verify_api_key,
+    require_human_or_api_key,
     _week_artifacts,
 )
 
@@ -97,7 +97,7 @@ def build_content_detail(content_id: str) -> dict[str, Any]:
 
 @router.get("/content", tags=["content-studio"])
 def list_content(
-    _: str | None = Depends(_verify_api_key),
+    _: str | None = Depends(require_human_or_api_key),
 ) -> dict[str, Any]:
     """List Content Studio inventory from tracker.csv (read-only)."""
     logger.info("Content Studio list")
@@ -107,7 +107,7 @@ def list_content(
 @router.get("/content/{content_id}", tags=["content-studio"])
 def get_content(
     content_id: str,
-    _: str | None = Depends(_verify_api_key),
+    _: str | None = Depends(require_human_or_api_key),
 ) -> dict[str, Any]:
     """Return one Content Studio item from tracker.csv (read-only)."""
     logger.info("Content Studio detail", extra={"content_id": content_id})

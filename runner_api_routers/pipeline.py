@@ -13,7 +13,7 @@ from runner_api_routers.utils import (
     _apply_week_if_set,
     _run,
     _tail,
-    _verify_api_key,
+    require_human_or_api_key,
 )
 
 logger = logging.getLogger(__name__)
@@ -31,7 +31,7 @@ class WeekRequest(BaseModel):
 @router.post("/run", tags=["pipeline"])
 def run_full(
     request: WeekRequest,
-    _: str | None = Depends(_verify_api_key),
+    _: str | None = Depends(require_human_or_api_key),
 ) -> dict[str, Any]:
     """Full pipeline: optional week switch then main.py."""
     logger.info("Starting full pipeline run", extra={"week": request.week})
@@ -53,7 +53,7 @@ def run_full(
 @router.post("/validate", tags=["pipeline"])
 def run_validate(
     request: WeekRequest,
-    _: str | None = Depends(_verify_api_key),
+    _: str | None = Depends(require_human_or_api_key),
 ) -> dict[str, Any]:
     """Run validators only (no generation, no tracker write)."""
     logger.info("Running validators", extra={"week": request.week})
@@ -73,7 +73,7 @@ def run_validate(
 @router.post("/generate", tags=["pipeline"])
 def run_generate(
     request: WeekRequest,
-    _: str | None = Depends(_verify_api_key),
+    _: str | None = Depends(require_human_or_api_key),
 ) -> dict[str, Any]:
     """Phase 2A: content generation crew."""
     logger.info("Running generation crew", extra={"week": request.week})
@@ -93,7 +93,7 @@ def run_generate(
 @router.post("/edit", tags=["pipeline"])
 def run_edit(
     request: WeekRequest,
-    _: str | None = Depends(_verify_api_key),
+    _: str | None = Depends(require_human_or_api_key),
 ) -> dict[str, Any]:
     """Phase 2B: editor crew."""
     logger.info("Running editor crew", extra={"week": request.week})
@@ -113,7 +113,7 @@ def run_edit(
 @router.post("/switch-week", tags=["pipeline"])
 def switch_week(
     request: WeekRequest,
-    _: str | None = Depends(_verify_api_key),
+    _: str | None = Depends(require_human_or_api_key),
 ) -> dict[str, Any]:
     """Apply a week profile to runtime_config.json."""
     week = (request.week or "").strip().upper()
@@ -127,7 +127,7 @@ def switch_week(
 @router.post("/go-live", tags=["pipeline"])
 def record_go_live(
     request: WeekRequest,
-    _: str | None = Depends(_verify_api_key),
+    _: str | None = Depends(require_human_or_api_key),
 ) -> dict[str, Any]:
     """Record that a week's article is live at a URL."""
     week = (request.week or "").strip().upper()
@@ -160,7 +160,7 @@ def record_go_live(
 @router.post("/run-pipeline", tags=["pipeline"])
 def run_pipeline(
     request: WeekRequest,
-    _: str | None = Depends(_verify_api_key),
+    _: str | None = Depends(require_human_or_api_key),
 ) -> dict[str, Any]:
     """
     Optionally apply a week profile, then run the same entrypoint as ``python main.py``.

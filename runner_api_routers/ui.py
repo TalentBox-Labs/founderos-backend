@@ -207,9 +207,12 @@ def _dashboard_stats(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-@router.get("/", response_class=HTMLResponse)
-def page_dashboard(request: Request) -> HTMLResponse:
+@router.get("/", response_class=HTMLResponse, response_model=None)
+def page_dashboard(request: Request) -> HTMLResponse | RedirectResponse:
     """Dashboard home page."""
+    redirected = founder_login_redirect(request)
+    if redirected is not None:
+        return redirected
     logger.info("Loading dashboard page")
     rows = _read_tracker()
     enriched = _enrich_rows(rows)
@@ -230,9 +233,12 @@ def page_dashboard(request: Request) -> HTMLResponse:
     )
 
 
-@router.get("/weeks", response_class=HTMLResponse)
-def page_weeks(request: Request) -> HTMLResponse:
+@router.get("/weeks", response_class=HTMLResponse, response_model=None)
+def page_weeks(request: Request) -> HTMLResponse | RedirectResponse:
     """Content calendar page."""
+    redirected = founder_login_redirect(request)
+    if redirected is not None:
+        return redirected
     logger.info("Loading weeks page")
     rows = _read_tracker()
     enriched = _enrich_rows(rows)
@@ -250,9 +256,12 @@ def page_weeks(request: Request) -> HTMLResponse:
     )
 
 
-@router.get("/weeks/{week_id}", response_class=HTMLResponse)
-def page_week_detail(week_id: str, request: Request) -> HTMLResponse:
+@router.get("/weeks/{week_id}", response_class=HTMLResponse, response_model=None)
+def page_week_detail(week_id: str, request: Request) -> HTMLResponse | RedirectResponse:
     """Week detail page."""
+    redirected = founder_login_redirect(request)
+    if redirected is not None:
+        return redirected
     try:
         _validate_week_id(week_id)
     except ValueError as exc:
@@ -295,11 +304,14 @@ def page_week_detail(week_id: str, request: Request) -> HTMLResponse:
     )
 
 
-@router.get("/weeks/{week_id}/file/{filename:path}", response_class=HTMLResponse)
+@router.get("/weeks/{week_id}/file/{filename:path}", response_class=HTMLResponse, response_model=None)
 def page_file_view(
     week_id: str, filename: str, request: Request
-) -> HTMLResponse:
+) -> HTMLResponse | RedirectResponse:
     """File viewer page."""
+    redirected = founder_login_redirect(request)
+    if redirected is not None:
+        return redirected
     try:
         _validate_week_id(week_id)
     except ValueError as exc:
@@ -331,9 +343,12 @@ def page_file_view(
     )
 
 
-@router.get("/content-studio", response_class=HTMLResponse)
-def page_content_studio(request: Request) -> HTMLResponse:
+@router.get("/content-studio", response_class=HTMLResponse, response_model=None)
+def page_content_studio(request: Request) -> HTMLResponse | RedirectResponse:
     """Content Studio list — data from Content Studio API builders only."""
+    redirected = founder_login_redirect(request)
+    if redirected is not None:
+        return redirected
     logger.info("Loading Content Studio list page")
     runtime = _load_runtime()
     api_error: str | None = None
@@ -379,9 +394,12 @@ def page_content_studio(request: Request) -> HTMLResponse:
     )
 
 
-@router.get("/content-studio/kanban", response_class=HTMLResponse)
-def page_content_studio_kanban(request: Request) -> HTMLResponse:
+@router.get("/content-studio/kanban", response_class=HTMLResponse, response_model=None)
+def page_content_studio_kanban(request: Request) -> HTMLResponse | RedirectResponse:
     """Content Studio read-only Kanban — columns = exact API status strings."""
+    redirected = founder_login_redirect(request)
+    if redirected is not None:
+        return redirected
     logger.info("Loading Content Studio Kanban page")
     runtime = _load_runtime()
     api_error: str | None = None
@@ -436,9 +454,12 @@ def page_content_studio_kanban(request: Request) -> HTMLResponse:
     )
 
 
-@router.get("/content-studio/{content_id}", response_class=HTMLResponse)
-def page_content_studio_detail(content_id: str, request: Request) -> HTMLResponse:
+@router.get("/content-studio/{content_id}", response_class=HTMLResponse, response_model=None)
+def page_content_studio_detail(content_id: str, request: Request) -> HTMLResponse | RedirectResponse:
     """Content Studio detail — data from Content Studio API builders only."""
+    redirected = founder_login_redirect(request)
+    if redirected is not None:
+        return redirected
     try:
         _validate_week_id(content_id)
     except ValueError as exc:
@@ -505,10 +526,13 @@ def page_content_studio_detail(content_id: str, request: Request) -> HTMLRespons
     )
 
 
-@router.get("/editorial", response_class=HTMLResponse)
-@router.get("/editorial/pending", response_class=HTMLResponse)
-def page_editorial_pending(request: Request) -> HTMLResponse:
+@router.get("/editorial", response_class=HTMLResponse, response_model=None)
+@router.get("/editorial/pending", response_class=HTMLResponse, response_model=None)
+def page_editorial_pending(request: Request) -> HTMLResponse | RedirectResponse:
     """Editorial Approval pending queue — existing artifacts + decision audit only."""
+    redirected = founder_login_redirect(request)
+    if redirected is not None:
+        return redirected
     logger.info("Loading Editorial Approval pending page")
     runtime = _load_runtime()
     api_error: str | None = None
@@ -536,9 +560,12 @@ def page_editorial_pending(request: Request) -> HTMLResponse:
     )
 
 
-@router.get("/editorial/{content_id}", response_class=HTMLResponse)
-def page_editorial_detail(content_id: str, request: Request) -> HTMLResponse:
+@router.get("/editorial/{content_id}", response_class=HTMLResponse, response_model=None)
+def page_editorial_detail(content_id: str, request: Request) -> HTMLResponse | RedirectResponse:
     """Editorial Approval detail — decision buttons; reads existing artifacts only."""
+    redirected = founder_login_redirect(request)
+    if redirected is not None:
+        return redirected
     try:
         _validate_week_id(content_id)
     except ValueError as exc:
@@ -578,9 +605,12 @@ def page_editorial_detail(content_id: str, request: Request) -> HTMLResponse:
     )
 
 
-@router.get("/publishing", response_class=HTMLResponse)
-def page_publishing_queue(request: Request) -> HTMLResponse:
+@router.get("/publishing", response_class=HTMLResponse, response_model=None)
+def page_publishing_queue(request: Request) -> HTMLResponse | RedirectResponse:
     """Publishing Engine queue — orchestration only (Architecture v2.1)."""
+    redirected = founder_login_redirect(request)
+    if redirected is not None:
+        return redirected
     logger.info("Loading Publishing queue page")
     runtime = _load_runtime()
     api_error: str | None = None
@@ -605,9 +635,12 @@ def page_publishing_queue(request: Request) -> HTMLResponse:
     )
 
 
-@router.get("/publishing/{job_id}", response_class=HTMLResponse)
-def page_publishing_detail(job_id: str, request: Request) -> HTMLResponse:
+@router.get("/publishing/{job_id}", response_class=HTMLResponse, response_model=None)
+def page_publishing_detail(job_id: str, request: Request) -> HTMLResponse | RedirectResponse:
     """Publishing job detail — manual publish / retry / cancel."""
+    redirected = founder_login_redirect(request)
+    if redirected is not None:
+        return redirected
     logger.info("Loading Publishing detail", extra={"job_id": job_id})
     runtime = _load_runtime()
     api_error: str | None = None
@@ -640,9 +673,12 @@ def page_publishing_detail(job_id: str, request: Request) -> HTMLResponse:
     )
 
 
-@router.get("/pipeline", response_class=HTMLResponse)
-def page_pipeline(request: Request) -> HTMLResponse:
+@router.get("/pipeline", response_class=HTMLResponse, response_model=None)
+def page_pipeline(request: Request) -> HTMLResponse | RedirectResponse:
     """Pipeline trigger UI page."""
+    redirected = founder_login_redirect(request)
+    if redirected is not None:
+        return redirected
     logger.info("Loading pipeline page")
     rows = _read_tracker()
     runtime = _load_runtime()
@@ -661,9 +697,12 @@ def page_pipeline(request: Request) -> HTMLResponse:
     )
 
 
-@router.get("/mcp", response_class=HTMLResponse)
-def page_mcp(request: Request) -> HTMLResponse:
+@router.get("/mcp", response_class=HTMLResponse, response_model=None)
+def page_mcp(request: Request) -> HTMLResponse | RedirectResponse:
     """MCP hub configuration page."""
+    redirected = founder_login_redirect(request)
+    if redirected is not None:
+        return redirected
     logger.info("Loading MCP page")
     runtime = _load_runtime()
 
@@ -678,9 +717,12 @@ def page_mcp(request: Request) -> HTMLResponse:
     )
 
 
-@router.get("/marketing", response_class=HTMLResponse)
-def page_marketing(request: Request) -> HTMLResponse:
+@router.get("/marketing", response_class=HTMLResponse, response_model=None)
+def page_marketing(request: Request) -> HTMLResponse | RedirectResponse:
     """Marketing agent UI page."""
+    redirected = founder_login_redirect(request)
+    if redirected is not None:
+        return redirected
     logger.info("Loading marketing page")
     runtime = _load_runtime()
 
@@ -699,9 +741,12 @@ def page_marketing(request: Request) -> HTMLResponse:
     )
 
 
-@router.get("/sales", response_class=HTMLResponse)
-def page_sales(request: Request) -> HTMLResponse:
+@router.get("/sales", response_class=HTMLResponse, response_model=None)
+def page_sales(request: Request) -> HTMLResponse | RedirectResponse:
     """Sales prospecting UI page."""
+    redirected = founder_login_redirect(request)
+    if redirected is not None:
+        return redirected
     logger.info("Loading sales page")
     runtime = _load_runtime()
 
@@ -853,9 +898,12 @@ def page_founder_activity(request: Request) -> HTMLResponse | RedirectResponse:
     return templates.TemplateResponse(request=request, name="founder_activity.html", context=ctx)
 
 
-@router.get("/analytics", response_class=HTMLResponse)
-def page_analytics(request: Request) -> HTMLResponse:
+@router.get("/analytics", response_class=HTMLResponse, response_model=None)
+def page_analytics(request: Request) -> HTMLResponse | RedirectResponse:
     """Analytics dashboard page."""
+    redirected = founder_login_redirect(request)
+    if redirected is not None:
+        return redirected
     logger.info("Loading analytics page")
     runtime = _load_runtime()
 
@@ -885,9 +933,12 @@ def health() -> dict[str, str]:
     }
 
 
-@router.get("/seo", response_class=HTMLResponse)
-def page_seo_readiness(request: Request) -> HTMLResponse:
+@router.get("/seo", response_class=HTMLResponse, response_model=None)
+def page_seo_readiness(request: Request) -> HTMLResponse | RedirectResponse:
     """SEO Readiness Engine — read-only site view (S1)."""
+    redirected = founder_login_redirect(request)
+    if redirected is not None:
+        return redirected
     logger.info("Loading SEO readiness page")
     runtime = _load_runtime()
     api_error: str | None = None
@@ -913,9 +964,12 @@ def page_seo_readiness(request: Request) -> HTMLResponse:
     )
 
 
-@router.get("/seo/technical", response_class=HTMLResponse)
-def page_seo_technical(request: Request) -> HTMLResponse:
+@router.get("/seo/technical", response_class=HTMLResponse, response_model=None)
+def page_seo_technical(request: Request) -> HTMLResponse | RedirectResponse:
     """Technical SEO Engine — read-only site view (S2 additive)."""
+    redirected = founder_login_redirect(request)
+    if redirected is not None:
+        return redirected
     logger.info("Loading Technical SEO page")
     runtime = _load_runtime()
     api_error: str | None = None
@@ -939,9 +993,12 @@ def page_seo_technical(request: Request) -> HTMLResponse:
     )
 
 
-@router.get("/seo/{slug}", response_class=HTMLResponse)
-def page_seo_readiness_detail(slug: str, request: Request) -> HTMLResponse:
+@router.get("/seo/{slug}", response_class=HTMLResponse, response_model=None)
+def page_seo_readiness_detail(slug: str, request: Request) -> HTMLResponse | RedirectResponse:
     """SEO Readiness Engine — read-only page detail (S1)."""
+    redirected = founder_login_redirect(request)
+    if redirected is not None:
+        return redirected
     logger.info("Loading SEO readiness detail", extra={"slug": slug})
     runtime = _load_runtime()
     api_error: str | None = None

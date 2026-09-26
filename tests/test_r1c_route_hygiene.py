@@ -80,6 +80,11 @@ def test_marketing_omits_run_detail_route(client: TestClient) -> None:
 
 def test_app_crm_optional_when_dist_absent(client: TestClient) -> None:
     """React CRM /app is optional; without frontend/dist expect explicit 503."""
+    from pathlib import Path
+
+    dist = Path(__file__).resolve().parents[1] / "frontend" / "dist"
+    if dist.is_dir():
+        pytest.skip("frontend/dist present in this worktree; 503 path not applicable")
     r = client.get("/app")
     assert r.status_code == 503
     body = r.json()

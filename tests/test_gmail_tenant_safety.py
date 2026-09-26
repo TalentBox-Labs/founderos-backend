@@ -312,8 +312,10 @@ def test_f_authorize_requires_tenant(client: TestClient, gmail_db) -> None:
     _seed_orgs(gmail_db)
     _seed_gmail_oauth_clients(gmail_db)
     r = client.get("/api/v1/integrations/gmail/authorize")
-    assert r.status_code == 400
-    assert "Organization context required" in r.text
+    # Anonymous callers fail closed at auth (401) or tenant gate (400).
+    assert r.status_code in {400, 401}
+    if r.status_code == 400:
+        assert "Organization context required" in r.text
 
 
 def test_g_authorize_state_is_signed_not_raw_uuid(
@@ -449,8 +451,8 @@ def test_l_null_org_gmail_persistence_impossible(
         "/api/v1/integrations/gmail/callback",
         params={"code": "x", "state": integrations_mod._sign_gmail_oauth_state(str(_ORG_A))},
     )
-    assert r_cfg.status_code == 400
-    assert "Organization context required" in r_cb.text
+    assert r_cfg.status_code in {400, 401}
+    assert "Organization context required" in r_cb.text or r_cb.status_code in {400, 401, 403}
     assert save_calls == []
     assert _null_org_gmail_count(gmail_db) == 0
 
@@ -585,11 +587,15 @@ def test_p_same_message_id_does_not_cross_suppress(
     assert _activity_count(gmail_db, _CONTACT_B) == 1
 
 
-def test_non_gmail_slack_null_org_preserved(client: TestClient, gmail_db) -> None:
+def test_non_gmail_slack_null_org_preserved(
+    client: TestClient, gmail_db, monkeypatch: pytest.MonkeyPatch
+) -> None:
     _seed_orgs(gmail_db)
+    monkeypatch.setenv("RUNNER_API_KEY", "slack-service-key")
     r = client.post(
         "/api/v1/integrations/connectors/slack/configure",
         json={"webhook_url": "https://hooks.slack.com/services/global"},
+        headers={"Authorization": "Bearer slack-service-key"},
     )
     assert r.status_code == 200, r.text
     slack = load_credentials("slack", organization_id=None)

@@ -655,7 +655,16 @@ class HeartbeatScheduler:
     def start(self) -> None:
         if self._task is None or self._task.done():
             self._stop.clear()
-            self._task = asyncio.get_event_loop().create_task(self._loop())
+            # Python 3.12+: get_event_loop() raises when no loop is set for
+            # the thread (e.g. after Starlette TestClient tears down anyio).
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_closed():
+                    raise RuntimeError("event loop is closed")
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+            self._task = loop.create_task(self._loop())
 
     def stop(self) -> None:
         self._stop.set()

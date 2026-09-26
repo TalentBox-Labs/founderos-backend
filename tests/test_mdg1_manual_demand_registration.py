@@ -302,6 +302,7 @@ def test_no_public_anonymous_path(client: TestClient, monkeypatch: pytest.Monkey
     assert "/api/v1/mdg/manual-demand/register" in page.text
 
 
+@pytest.mark.real_api_auth
 def test_unauthenticated_when_api_key_set(
     client: TestClient, monkeypatch: pytest.MonkeyPatch, operator_env: None
 ) -> None:

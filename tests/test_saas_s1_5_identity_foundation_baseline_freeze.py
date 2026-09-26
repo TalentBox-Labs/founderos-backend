@@ -582,16 +582,18 @@ def test_freeze_a1_5_exceptions_register_unchanged() -> None:
 
 
 def test_freeze_public_website_not_login_gated() -> None:
-    """Public site is Cloudflare Pages — not runner_api. Login gate only Founder routes."""
+    """Public marketing site is Cloudflare Pages — not runner_api.
+
+    Founder + Content Ops HTML surfaces on runner_api are login-gated via
+    founder_login_redirect. Cloudflare Pages remains a separate public surface.
+    """
     src = inspect.getsource(identity_mod.founder_login_redirect)
-    ui_src = inspect.getsource(
-        __import__("runner_api_routers.ui", fromlist=["x"])
-    )
+    ui_mod = __import__("runner_api_routers.ui", fromlist=["x"])
+    ui_src = inspect.getsource(ui_mod)
     assert "founder_login_redirect" in ui_src
-    # Dashboard `/` is not forced through founder_login_redirect in identity module
-    assert "/cockpit" in inspect.getsource(
-        __import__("runner_api_routers.ui", fromlist=["x"]).page_cockpit
-    )
+    assert "founder_login_redirect" in inspect.getsource(ui_mod.page_cockpit)
+    assert "founder_login_redirect" in inspect.getsource(ui_mod.page_dashboard)
+    assert "founder_login_redirect" in inspect.getsource(ui_mod.page_content_studio)
     auth_doc = (DOCS / "AUTHENTICATION_CONTRACT_v1.0.md").read_text(encoding="utf-8")
     assert "Cloudflare Pages" in auth_doc or "separate" in auth_doc.lower()
 

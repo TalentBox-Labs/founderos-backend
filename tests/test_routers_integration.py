@@ -27,6 +27,7 @@ class TestPipelineRouter:
         assert r.status_code == 200
         assert r.json()["service"] == "WorkCrew CMS OS API"
 
+    @pytest.mark.real_api_auth
     def test_run_validate_requires_api_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Validate endpoint requires valid API key."""
         from fastapi import HTTPException

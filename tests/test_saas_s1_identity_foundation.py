@@ -254,7 +254,9 @@ def test_agent_identity_cannot_mutate_human_only(
         "/api/v1/mdg/manual-demand/register",
         json={"email": "agent@example.com", "source": "manual"},
     )
-    assert r.status_code == 503
+    # Fail-closed: AGENT cookie is not HUMAN and has no SERVICE key → 401 at
+    # auth boundary (or 503 if a route reaches human-authority checks).
+    assert r.status_code in {401, 503}
     with pytest.raises(PermissionError):
         bind_requested_by(
             IdentityContext(
@@ -283,7 +285,7 @@ def test_ai_identity_cannot_mutate_human_only(
         "/api/v1/cockpit/actions/qualified-demand/accept",
         json={"demand_id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"},
     )
-    assert r.status_code == 503
+    assert r.status_code in {401, 503}
     with pytest.raises(PermissionError):
         bind_requested_by(
             IdentityContext(

@@ -182,6 +182,7 @@ def test_runner_status_rejects_automation_requester(
     assert r.status_code == 403
 
 
+@pytest.mark.real_api_auth
 def test_runner_status_unauthenticated_when_key_set(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:

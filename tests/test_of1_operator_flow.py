@@ -250,6 +250,7 @@ def _seed_handoff(db: _FakeDB, *, organization_id: str | None = None) -> None:
     )
 
 
+@pytest.mark.real_api_auth
 def test_unauthenticated_mutation_rejected(
     client: TestClient, monkeypatch: pytest.MonkeyPatch, operator_env: None
 ) -> None:

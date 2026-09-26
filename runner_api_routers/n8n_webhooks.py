@@ -61,7 +61,11 @@ def _verify_n8n_auth(
     authorization: str | None = Header(default=None),
     x_n8n_secret: str | None = Header(default=None),
 ) -> str:
-    """Accept the platform API key (Bearer) or a dedicated n8n shared secret."""
+    """Accept the platform API key (Bearer) or a dedicated n8n shared secret.
+
+    Fail-closed: if neither ``N8N_INBOUND_SECRET`` nor ``RUNNER_API_KEY`` is
+    configured, requests are rejected (no anonymous soft-open).
+    """
     inbound_secret = os.environ.get("N8N_INBOUND_SECRET", "")
     if inbound_secret and x_n8n_secret == inbound_secret:
         return "n8n-secret"
@@ -72,7 +76,7 @@ def _verify_n8n_auth(
             return "api-key"
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    return "open"
+    raise HTTPException(status_code=401, detail="Unauthorized")
 
 
 def _legacy_load_contact(db, contact_id: str) -> Contact | None:

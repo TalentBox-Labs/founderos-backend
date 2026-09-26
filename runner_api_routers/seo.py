@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 
 from revenue_os.database import SessionLocal
 from revenue_os.models.seo import SEOKeyword, SEORankCheck
-from runner_api_routers.utils import _verify_api_key
+from runner_api_routers.utils import require_human_or_api_key
 from src.tools.seo_engine import (
     analyze_page_artifact,
     analyze_site,
@@ -81,7 +81,7 @@ class RankCheckRequest(BaseModel):
 
 
 @router.get("/keywords")
-def list_keywords(_: str | None = Depends(_verify_api_key)) -> dict[str, Any]:
+def list_keywords(_: str | None = Depends(require_human_or_api_key)) -> dict[str, Any]:
     db = SessionLocal()
     try:
         keywords = db.query(SEOKeyword).order_by(SEOKeyword.created_at.desc()).all()
@@ -93,7 +93,7 @@ def list_keywords(_: str | None = Depends(_verify_api_key)) -> dict[str, Any]:
 @router.post("/keywords")
 def create_keyword(
     req: KeywordCreateRequest,
-    _: str | None = Depends(_verify_api_key),
+    _: str | None = Depends(require_human_or_api_key),
 ) -> dict[str, Any]:
     db = SessionLocal()
     try:
@@ -112,7 +112,7 @@ def create_keyword(
 @router.get("/keywords/{keyword_id}")
 def get_keyword(
     keyword_id: str,
-    _: str | None = Depends(_verify_api_key),
+    _: str | None = Depends(require_human_or_api_key),
 ) -> dict[str, Any]:
     db = SessionLocal()
     try:
@@ -139,7 +139,7 @@ def get_keyword(
 @router.delete("/keywords/{keyword_id}")
 def delete_keyword(
     keyword_id: str,
-    _: str | None = Depends(_verify_api_key),
+    _: str | None = Depends(require_human_or_api_key),
 ) -> dict[str, Any]:
     db = SessionLocal()
     try:
@@ -161,7 +161,7 @@ def delete_keyword(
 def log_rank_check(
     keyword_id: str,
     req: RankCheckRequest,
-    _: str | None = Depends(_verify_api_key),
+    _: str | None = Depends(require_human_or_api_key),
 ) -> dict[str, Any]:
     db = SessionLocal()
     try:
@@ -186,7 +186,7 @@ def log_rank_check(
 
 
 @router.get("/summary")
-def seo_summary(_: str | None = Depends(_verify_api_key)) -> dict[str, Any]:
+def seo_summary(_: str | None = Depends(require_human_or_api_key)) -> dict[str, Any]:
     """Aggregate score for the Dashboard — tracked keywords, rank trend, AI visibility."""
     db = SessionLocal()
     try:
@@ -216,7 +216,7 @@ def seo_summary(_: str | None = Depends(_verify_api_key)) -> dict[str, Any]:
 
 
 @router.get("/readiness")
-def seo_readiness_list(_: str | None = Depends(_verify_api_key)) -> dict[str, Any]:
+def seo_readiness_list(_: str | None = Depends(require_human_or_api_key)) -> dict[str, Any]:
     """Read-only site SEO readiness over Website Engine artifacts."""
     result = analyze_site()
     payload = result.to_dict()
@@ -228,7 +228,7 @@ def seo_readiness_list(_: str | None = Depends(_verify_api_key)) -> dict[str, An
 @router.get("/readiness/{slug}")
 def seo_readiness_page(
     slug: str,
-    _: str | None = Depends(_verify_api_key),
+    _: str | None = Depends(require_human_or_api_key),
 ) -> dict[str, Any]:
     """Read-only page SEO readiness for a single artifact slug."""
     result = analyze_page_artifact(default_artifact_root(), slug)
@@ -247,7 +247,7 @@ def seo_readiness_page(
 
 @router.get("/technical")
 @router.get("/technical/site")
-def seo_technical_site(_: str | None = Depends(_verify_api_key)) -> dict[str, Any]:
+def seo_technical_site(_: str | None = Depends(require_human_or_api_key)) -> dict[str, Any]:
     """Read-only site technical SEO analysis over Website Engine artifacts."""
     result = analyze_technical_site()
     payload = result.to_dict()
@@ -258,7 +258,7 @@ def seo_technical_site(_: str | None = Depends(_verify_api_key)) -> dict[str, An
 @router.get("/technical/{slug}")
 def seo_technical_page(
     slug: str,
-    _: str | None = Depends(_verify_api_key),
+    _: str | None = Depends(require_human_or_api_key),
 ) -> dict[str, Any]:
     """Read-only page technical SEO analysis."""
     if slug in {"site", "readiness"}:

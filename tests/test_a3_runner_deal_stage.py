@@ -141,6 +141,7 @@ def test_runner_stage_rejects_ai_prefix(
     assert r.status_code == 403
 
 
+@pytest.mark.real_api_auth
 def test_runner_stage_unauthenticated_when_key_set(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -152,6 +153,7 @@ def test_runner_stage_unauthenticated_when_key_set(
     assert r.status_code == 401
 
 
+@pytest.mark.real_api_auth
 def test_runner_stage_wrong_api_key(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
