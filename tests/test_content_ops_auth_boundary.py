@@ -332,14 +332,76 @@ def test_o_valid_service_key_allows_service_classified_endpoint(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("RUNNER_API_KEY", "coa-service-key")
-    # Heartbeat status is SERVICE-oriented; must work with valid key.
     r = client.get(
         "/api/v1/heartbeat/status",
         headers={"Authorization": "Bearer coa-service-key"},
     )
-    # Endpoint may 200 or 404 if route shape differs — must not be open-anon 200 without key.
-    assert r.status_code != 401 or True
-    assert r.status_code in {200, 404, 405, 503}
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] is True
+    assert isinstance(body["enabled"], bool)
+    assert isinstance(body["jobs"], list)
+
+
+def test_o_missing_service_credential_heartbeat_denied(
+    client: TestClient,
+    clear_runner_api_key: None,
+) -> None:
+    r = client.get("/api/v1/heartbeat/status")
+    assert r.status_code == 401
+
+
+def test_o_invalid_service_credential_heartbeat_denied(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("RUNNER_API_KEY", "coa-service-key")
+    r = client.get(
+        "/api/v1/heartbeat/status",
+        headers={"Authorization": "Bearer wrong-key"},
+    )
+    assert r.status_code == 401
+
+
+def test_o_valid_service_key_is_not_human_or_tenant(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("RUNNER_API_KEY", "coa-service-key")
+    headers = {"Authorization": "Bearer coa-service-key"}
+    forged_org = "00000000-0000-4000-8000-000000000099"
+    me = client.get("/api/v1/identity/me", headers=headers)
+    assert me.status_code == 200
+    identity = me.json()["identity"]
+    assert identity["principal_kind"] == "SERVICE"
+    assert identity["is_human"] is False
+
+    tenant = client.get("/api/v1/tenant/me", headers=headers)
+    assert tenant.status_code == 200
+    assert tenant.json().get("tenant") is None
+
+    by_query = client.get(
+        "/api/v1/tenant/me",
+        headers=headers,
+        params={"organization_id": forged_org},
+    )
+    assert by_query.status_code == 200
+    assert by_query.json().get("tenant") is None
+
+    by_header = client.get(
+        "/api/v1/tenant/me",
+        headers={**headers, "X-Organization-Id": forged_org, "organization_id": forged_org},
+    )
+    assert by_header.status_code == 200
+    assert by_header.json().get("tenant") is None
+
+    by_body = client.post(
+        "/api/v1/tenant/select",
+        headers=headers,
+        json={"organization_id": forged_org},
+    )
+    assert by_body.status_code == 403
+    assert by_body.json().get("tenant") is None
 
 
 # ── P — Missing RUNNER_API_KEY must not soft-open ────────────────────────────

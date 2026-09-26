@@ -30,7 +30,26 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt -r requirements-api.txt -r requirements-revenue.txt
+        pip install --no-cache-dir -r requirements.txt -r requirements-api.txt -r requirements-revenue.txt
+
+    - name: Runtime Postgres driver smoke
+      run: |
+        python - << 'PY'
+        import sqlalchemy
+        from sqlalchemy import create_engine
+
+        version = tuple(int(part) for part in sqlalchemy.__version__.split(".")[:2])
+        if version >= (2, 1):
+            raise SystemExit(
+                f"sqlalchemy {sqlalchemy.__version__} is outside the declared <2.1 pin"
+            )
+        engine = create_engine("postgresql+psycopg2://user:x@127.0.0.1:1/db")
+        module = engine.dialect.__class__.__module__
+        engine.dispose()
+        if "psycopg2" not in module:
+            raise SystemExit(f"declared driver missing; dialect module={module}")
+        print("RUNTIME_DRIVER_SMOKE", sqlalchemy.__version__, module)
+        PY
 
     - name: Run tests
       run: |
