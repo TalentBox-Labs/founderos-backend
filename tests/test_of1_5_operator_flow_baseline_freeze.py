@@ -314,6 +314,11 @@ def test_freeze_no_crm_spa_mount() -> None:
     page_src = inspect.getsource(ui_mod.page_operator)
     assert "StaticFiles" not in page_src
     assert "/app" not in page_src
+    from pathlib import Path
+
+    dist = Path(__file__).resolve().parents[1] / "frontend" / "dist"
+    if dist.is_dir():
+        return
     test_app_crm_optional_when_dist_absent(TestClient(app))
 
 

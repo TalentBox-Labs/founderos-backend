@@ -17,14 +17,18 @@ os.environ.setdefault("DATABASE_URL", f"sqlite:///{_TEST_DB_PATH}")
 # Deliberately NOT setting HEARTBEAT_ENABLED=0 here: Main's ACP3 governance
 # layer (revenue_os/services/acp3_durable_runtime.py) treats it as a global
 # "pause all mutating work" switch, not a test-only background-loop toggle.
-# Deliberately NOT setting RUNNER_API_KEY here: several pre-existing tests
-# (tests/test_runner_api.py) rely on "unset = auth bypassed" against a bare
-# TestClient(app). New revenue_os tests should use the cms_client fixture
-# below, which bypasses auth via a dependency override instead — it works
-# whether or not RUNNER_API_KEY happens to be set in the environment.
+# Deliberately NOT setting RUNNER_API_KEY here: authentication is fail-closed
+# when unset. Tests that need SERVICE auth should set RUNNER_API_KEY or use
+# the cms_client fixture, which overrides auth dependencies.
 
 import pytest
 from fastapi.testclient import TestClient
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers", "real_api_auth: exercise real fail-closed RUNNER_API_KEY auth"
+    )
 
 # ── Revenue OS test database ─────────────────────────────────────────────────
 
@@ -60,20 +64,80 @@ def revenue_db():
         db.close()
 
 
-# ── FastAPI TestClient Fixture ───────────────────────────────────────────────
+@pytest.fixture(autouse=True)
+def _compat_api_auth_override(request: pytest.FixtureRequest):
+    """Legacy suite assumed unset RUNNER_API_KEY soft-opened routes.
+
+    Fail-closed auth removed that bypass. Provide a dependency override so
+    route/business-logic tests keep exercising handlers. Auth-boundary tests
+    opt out via ``real_api_auth`` marker or module name.
+    """
+    nodeid = request.node.nodeid
+    if "test_content_ops_auth_boundary" in nodeid:
+        yield
+        return
+    if request.node.get_closest_marker("real_api_auth") is not None:
+        yield
+        return
+
+    from runner_api import app
+    from runner_api_routers.utils import _verify_api_key, require_human_or_api_key
+
+    async def _ok(request=None, credentials=None):
+        return "test-key"
+
+    prev_verify = app.dependency_overrides.get(_verify_api_key)
+    prev_hs = app.dependency_overrides.get(require_human_or_api_key)
+    app.dependency_overrides[_verify_api_key] = _ok
+    app.dependency_overrides[require_human_or_api_key] = _ok
+
+    # n8n inbound previously soft-opened when secrets unset.
+    from runner_api_routers.n8n_webhooks import _verify_n8n_auth
+
+    def _n8n_ok(
+        authorization: str | None = None,
+        x_n8n_secret: str | None = None,
+    ) -> str:
+        return "n8n-secret"
+
+    prev_n8n = app.dependency_overrides.get(_verify_n8n_auth)
+    app.dependency_overrides[_verify_n8n_auth] = _n8n_ok
+
+    try:
+        yield
+    finally:
+        if prev_n8n is None:
+            app.dependency_overrides.pop(_verify_n8n_auth, None)
+        else:
+            app.dependency_overrides[_verify_n8n_auth] = prev_n8n
+        if prev_verify is None:
+            app.dependency_overrides.pop(_verify_api_key, None)
+        else:
+            app.dependency_overrides[_verify_api_key] = prev_verify
+        if prev_hs is None:
+            app.dependency_overrides.pop(require_human_or_api_key, None)
+        else:
+            app.dependency_overrides[require_human_or_api_key] = prev_hs
 
 
 @pytest.fixture
 def cms_client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> TestClient:
     """TestClient for FastAPI CMS app with mocked dependencies."""
-    from runner_api_routers.utils import _verify_api_key
+    from runner_api_routers.utils import _verify_api_key, require_human_or_api_key
     from runner_api import app
 
-    # Override API key verification to always pass in tests
-    async def mock_verify_api_key(token: str | None = None):
+    # Override API key / HS auth verification to always pass in tests
+    async def mock_verify_api_key(request=None, credentials=None):
+        return "test-key"
+
+    async def mock_human_or_api_key(request=None, credentials=None):
         return "test-key"
 
     app.dependency_overrides[_verify_api_key] = mock_verify_api_key
+    app.dependency_overrides[require_human_or_api_key] = mock_human_or_api_key
+    # Content Ops HTML now requires HUMAN session; cms UI tests exercise page
+    # rendering, not the login gate.
+    monkeypatch.setattr("runner_api_routers.ui.founder_login_redirect", lambda _r: None)
 
     yield TestClient(app)
 

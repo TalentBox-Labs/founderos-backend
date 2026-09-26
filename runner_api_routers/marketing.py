@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from revenue_os.config import settings
 
-from runner_api_routers.utils import _run, _tail, _verify_api_key, PROJECT_ROOT
+from runner_api_routers.utils import _run, _tail, require_human_or_api_key, PROJECT_ROOT
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="", tags=["marketing"])
@@ -71,7 +71,7 @@ def _marketing_runs() -> list[dict[str, Any]]:
 @router.post("/marketing/generate", tags=["marketing"])
 def marketing_generate(
     req: MarketingRequest,
-    _: str | None = Depends(_verify_api_key),
+    _: str | None = Depends(require_human_or_api_key),
 ) -> dict[str, Any]:
     """Generate multi-channel marketing content via CrewAI agents."""
     if not req.topic or not req.keyword:
@@ -124,7 +124,7 @@ def marketing_generate(
 @router.post("/marketing/dry-run", tags=["marketing"])
 def marketing_dry_run(
     req: MarketingRequest,
-    _: str | None = Depends(_verify_api_key),
+    _: str | None = Depends(require_human_or_api_key),
 ) -> dict[str, Any]:
     """Preview what publish_all would post without hitting any APIs."""
     if not req.status_path:
@@ -146,7 +146,7 @@ def marketing_dry_run(
 @router.post("/marketing/publish", tags=["marketing"])
 def marketing_publish(
     req: MarketingRequest,
-    _: str | None = Depends(_verify_api_key),
+    _: str | None = Depends(require_human_or_api_key),
 ) -> dict[str, Any]:
     """Publish to all configured social channels. Requires confirmed=True."""
     if not req.status_path:

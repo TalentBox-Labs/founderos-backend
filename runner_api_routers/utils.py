@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 # Constants
@@ -26,27 +26,52 @@ def _get_runner_api_key() -> str:
 
 
 async def _verify_api_key(
+    request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(security),
-) -> str | None:
-    """Verify Bearer token using timing-safe comparison. Returns None if auth disabled.
+) -> str:
+    """Fail-closed SERVICE API key auth, with HUMAN session accepted.
 
-    Invalid credentials raise ``HTTPException(401)`` (never a bare ValueError).
+    - HUMAN cookie session → allowed (browser Content Ops / CRM / integrations)
+    - Valid ``RUNNER_API_KEY`` Bearer → allowed (SERVICE automation)
+    - Missing/empty ``RUNNER_API_KEY`` with no HUMAN session → 401 (no soft-open)
+    - Invalid Bearer → 401
+
+    Never elevates SERVICE to HUMAN/tenant authority; tenant resolution remains
+    separate and HUMAN+membership based.
     """
-    key = _get_runner_api_key()
-    if not key:
-        return None
+    import hmac
+
+    from revenue_os.services.identity_context import PrincipalKind
+    from runner_api_routers.identity import identity_from_request
+
+    ctx = identity_from_request(request)
+    if (
+        ctx is not None
+        and ctx.principal_kind is PrincipalKind.HUMAN
+        and ctx.is_human
+        and ctx.user_id
+    ):
+        return "human-session"
+
+    expected = _get_runner_api_key()
+    if not expected:
+        raise HTTPException(status_code=401, detail="Unauthorized")
     if not credentials:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-    import hmac
-
-    expected = _get_runner_api_key()
     provided = credentials.credentials
-
     if not hmac.compare_digest(provided, expected):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     return provided
+
+
+async def require_human_or_api_key(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
+) -> str:
+    """Explicit CLASS HS alias of ``_verify_api_key`` for Content Ops surfaces."""
+    return await _verify_api_key(request, credentials)
 
 
 def _validate_week_id(week_id: str) -> None:

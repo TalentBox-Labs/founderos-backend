@@ -104,6 +104,7 @@ from runner_api_routers.utils import (
     PROJECT_ROOT,
     PIPELINE_TIMEOUT_SEC,
     TAIL_CHARS,
+    require_human_or_api_key,
 )
 from revenue_os.automation.init import initialize_automation
 
@@ -852,7 +853,7 @@ def page_mcp(request: Request) -> HTMLResponse:
 
 
 @app.get("/api/v1/mcp/hub")
-def api_mcp_hub() -> dict:
+def api_mcp_hub(_: str = Depends(require_human_or_api_key)) -> dict:
     return {
         "ok": True,
         "hub": _mcp_hub_status(),
@@ -1504,7 +1505,10 @@ def page_analytics(request: Request) -> HTMLResponse:
 
 
 @app.get("/api/v1/analytics")
-def api_analytics(period: str = "monthly") -> dict:
+def api_analytics(
+    period: str = "monthly",
+    _: str = Depends(require_human_or_api_key),
+) -> dict:
     """Return analytics metrics grouped by period (daily|weekly|monthly|yoy)."""
     if period not in ("daily", "weekly", "monthly", "yoy"):
         raise HTTPException(status_code=422, detail="period must be daily|weekly|monthly|yoy")

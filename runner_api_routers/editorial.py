@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from runner_api_routers.content_studio import build_content_detail, build_content_list
-from runner_api_routers.utils import PROJECT_ROOT, _verify_api_key
+from runner_api_routers.utils import PROJECT_ROOT, require_human_or_api_key
 from src.tools import editorial_approval as ea
 
 logger = logging.getLogger(__name__)
@@ -210,7 +210,7 @@ def build_editorial_readiness(content_id: str) -> dict[str, Any]:
 @router.get("/readiness/{content_id}", tags=["editorial"])
 def get_editorial_readiness(
     content_id: str,
-    _: str | None = Depends(_verify_api_key),
+    _: str | None = Depends(require_human_or_api_key),
 ) -> dict[str, Any]:
     """Return observed editorial readiness evidence (read-only; no mutation)."""
     logger.info("Editorial readiness", extra={"content_id": content_id})
@@ -335,7 +335,7 @@ def _run_decision(
 
 @router.get("/pending", tags=["editorial"])
 def get_editorial_pending(
-    _: str | None = Depends(_verify_api_key),
+    _: str | None = Depends(require_human_or_api_key),
 ) -> dict[str, Any]:
     """Pending Editorial Approval queue (additive; read + decision state only)."""
     logger.info("Editorial pending queue")
@@ -349,7 +349,7 @@ def get_editorial_pending(
 @router.get("/{content_id}", tags=["editorial"])
 def get_editorial_item(
     content_id: str,
-    _: str | None = Depends(_verify_api_key),
+    _: str | None = Depends(require_human_or_api_key),
 ) -> dict[str, Any]:
     """Editorial Approval detail for one content bundle."""
     logger.info("Editorial item", extra={"content_id": content_id})
@@ -368,7 +368,7 @@ def get_editorial_item(
 def post_editorial_approve(
     content_id: str,
     body: EditorialDecisionRequest,
-    _: str | None = Depends(_verify_api_key),
+    _: str | None = Depends(require_human_or_api_key),
 ) -> dict[str, Any]:
     """Human approve → phase-scoped promote only (FDR-001/002). Does not publish (FDR-003)."""
     logger.info("Editorial approve", extra={"content_id": content_id})
@@ -379,7 +379,7 @@ def post_editorial_approve(
 def post_editorial_reject(
     content_id: str,
     body: EditorialDecisionRequest,
-    _: str | None = Depends(_verify_api_key),
+    _: str | None = Depends(require_human_or_api_key),
 ) -> dict[str, Any]:
     """Human reject — audit only; no promote; no publish."""
     logger.info("Editorial reject", extra={"content_id": content_id})
@@ -390,7 +390,7 @@ def post_editorial_reject(
 def post_editorial_request_changes(
     content_id: str,
     body: EditorialDecisionRequest,
-    _: str | None = Depends(_verify_api_key),
+    _: str | None = Depends(require_human_or_api_key),
 ) -> dict[str, Any]:
     """Human request-changes — audit only; no promote; no publish."""
     logger.info("Editorial request-changes", extra={"content_id": content_id})

@@ -17,7 +17,18 @@ from runner_api import app
 
 @pytest.fixture
 def client() -> TestClient:
-    return TestClient(app)
+    from runner_api_routers.utils import _verify_api_key, require_human_or_api_key
+
+    async def _ok(request=None, credentials=None):
+        return "test-key"
+
+    app.dependency_overrides[_verify_api_key] = _ok
+    app.dependency_overrides[require_human_or_api_key] = _ok
+    try:
+        yield TestClient(app)
+    finally:
+        app.dependency_overrides.pop(_verify_api_key, None)
+        app.dependency_overrides.pop(require_human_or_api_key, None)
 
 
 def test_health_returns_ok(client: TestClient) -> None:
@@ -115,10 +126,16 @@ def test_run_pipeline_stops_when_runtime_apply_fails(client: TestClient) -> None
     assert body["steps"][0]["returncode"] == 1
 
 
+@pytest.mark.real_api_auth
 def test_run_pipeline_requires_bearer_when_env_set(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from runner_api_routers.utils import _verify_api_key, require_human_or_api_key
+
+    app.dependency_overrides.pop(_verify_api_key, None)
+    app.dependency_overrides.pop(require_human_or_api_key, None)
     monkeypatch.setenv("RUNNER_API_KEY", "test-secret-token")
+    client = TestClient(app)
     r = client.post("/run-pipeline", json={})
     assert r.status_code == 401
 
