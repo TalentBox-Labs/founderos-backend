@@ -707,6 +707,10 @@ def gmail_callback(
 
     from revenue_os.integrations.gmail_sync import exchange_code_for_tokens
     from revenue_os.services.credentials_vault import load_credentials, save_credentials
+    from revenue_os.services.gmail_callback_diagnostics import (
+        diagnose_gmail_callback_authority,
+        emit_gmail_callback_diagnostics,
+    )
 
     def _page(message: str, ok: bool) -> HTMLResponse:
         color = "#06A77D" if ok else "#D62828"
@@ -716,6 +720,12 @@ def gmail_callback(
             f"<p>You can close this tab and return to the Integrations page.</p>"
             f"</body></html>"
         )
+
+    # Credential-safe categorical telemetry only — does not alter authority.
+    diag = diagnose_gmail_callback_authority(
+        request, state=state, code=code, oauth_error=error
+    )
+    emit_gmail_callback_diagnostics(diag)
 
     if error:
         return _page(f"Gmail connection failed: {error}", ok=False)
@@ -734,12 +744,18 @@ def gmail_callback(
         "gmail", organization_id=org_id, allow_global_fallback=False
     )
     if not config:
+        emit_gmail_callback_diagnostics(
+            {**diag, "failure_stage": "POST_AUTHORITY_FAILURE"}
+        )
         return _page("Gmail OAuth client is not configured for this organization.", ok=False)
 
     tokens = exchange_code_for_tokens(
         code, config["client_id"], config["client_secret"], config["redirect_uri"]
     )
     if not tokens.get("ok"):
+        emit_gmail_callback_diagnostics(
+            {**diag, "failure_stage": "POST_AUTHORITY_FAILURE"}
+        )
         return _page(f"Gmail connection failed: {tokens.get('error')}", ok=False)
 
     save_credentials(
@@ -748,6 +764,7 @@ def gmail_callback(
         {**config, "refresh_token": tokens.get("refresh_token", config.get("refresh_token"))},
         organization_id=org_id,
     )
+    emit_gmail_callback_diagnostics({**diag, "failure_stage": "SUCCESS"})
     return _page("Gmail connected successfully.", ok=True)
 
 
