@@ -8,7 +8,7 @@ import uuid as uuid_lib
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from jose import JWTError, jwt
 
 from revenue_os.config import settings
@@ -114,10 +114,10 @@ def _configure_whatsapp(config: dict[str, Any]) -> None:
 _VAULT_CONFIGURE_HANDLERS["whatsapp"] = _configure_whatsapp
 
 
-def _integration_org_id() -> str | None:
+def _integration_org_id(request: Request | None = None) -> str | None:
     from revenue_os.services.integration_tenant_resolution import resolve_integration_org_id
 
-    return resolve_integration_org_id()
+    return resolve_integration_org_id(request)
 
 
 @router.get("/connectors", tags=["integrations"])
@@ -630,12 +630,18 @@ def _decode_gmail_oauth_state(state: str | None) -> str | None:
         return None
 
 
-def _gmail_oauth_persist_organization_id(*, state: str | None = None) -> str | None:
+def _gmail_oauth_persist_organization_id(
+    *,
+    request: Request | None = None,
+    state: str | None = None,
+) -> str | None:
     """Authenticated session is tenant authority; signed state is CSRF/correlation only.
 
     State alone never grants persist rights. Missing session fails closed.
+    Prefer the explicit ASGI request so callback authority survives ContextVar
+    loss across OAuth redirects / process boundaries.
     """
-    session_org = _integration_org_id()
+    session_org = _integration_org_id(request)
     if not session_org:
         return None
     persist_org = str(session_org)
@@ -652,12 +658,15 @@ def _gmail_oauth_persist_organization_id(*, state: str | None = None) -> str | N
 
 
 @router.get("/gmail/authorize", tags=["integrations"])
-def gmail_authorize(_: str | None = Depends(_verify_api_key)) -> dict[str, Any]:
+def gmail_authorize(
+    request: Request,
+    _: str | None = Depends(_verify_api_key),
+) -> dict[str, Any]:
     """Build the Google consent URL for the founder to open and approve."""
     from revenue_os.integrations.gmail_sync import build_authorize_url
     from revenue_os.services.credentials_vault import load_credentials
 
-    org_id = _integration_org_id()
+    org_id = _integration_org_id(request)
     if not org_id:
         raise HTTPException(
             status_code=400,
@@ -680,6 +689,7 @@ def gmail_authorize(_: str | None = Depends(_verify_api_key)) -> dict[str, Any]:
 
 @router.get("/gmail/callback", tags=["integrations"])
 def gmail_callback(
+    request: Request,
     code: str | None = None,
     error: str | None = None,
     state: str | None = None,
@@ -689,7 +699,8 @@ def gmail_callback(
     This is opened directly by the browser (not called via the API client),
     so it returns a small HTML page instead of JSON.
 
-    Tenant authority is the authenticated Founder OS session organization.
+    Tenant authority is the authenticated Founder OS session organization,
+    resolved from the ASGI request (not process-local ContextVar alone).
     Signed OAuth state is CSRF/correlation only and never grants org rights alone.
     """
     from fastapi.responses import HTMLResponse
@@ -711,7 +722,7 @@ def gmail_callback(
     if not code:
         return _page("Missing authorization code.", ok=False)
 
-    org_id = _gmail_oauth_persist_organization_id(state=state)
+    org_id = _gmail_oauth_persist_organization_id(request=request, state=state)
     if not org_id:
         return _page(
             "Organization context required — Gmail was not connected. "
