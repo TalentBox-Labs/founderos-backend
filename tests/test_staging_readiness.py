@@ -67,10 +67,14 @@ def test_database_url_missing_fails_closed() -> None:
 def test_postgres_tls_secure_modes_accepted() -> None:
     for mode in ("require", "verify-ca", "verify-full"):
         url = f"postgresql://user:pass@ep-example.us-east-2.aws.neon.tech/neondb?sslmode={mode}"
-        assert validate_database_url(url) == url
+        locked = validate_database_url(url)
+        assert locked.startswith("postgresql+psycopg2://")
+        assert locked.split("://", 1)[1] == url.split("://", 1)[1]
         assert postgres_tls_configured(url) is True
     ssl_true = "postgresql://user:pass@ep-example.us-east-2.aws.neon.tech/neondb?ssl=true"
-    assert validate_database_url(ssl_true) == ssl_true
+    locked_ssl = validate_database_url(ssl_true)
+    assert locked_ssl.startswith("postgresql+psycopg2://")
+    assert locked_ssl.split("://", 1)[1] == ssl_true.split("://", 1)[1]
 
 
 def test_postgres_insecure_and_missing_tls_rejected() -> None:

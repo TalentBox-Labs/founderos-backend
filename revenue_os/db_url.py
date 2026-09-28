@@ -7,7 +7,7 @@ PostgreSQL URLs must request unambiguous TLS (sslmode=require or stronger).
 from __future__ import annotations
 
 import re
-from urllib.parse import parse_qs, unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse, urlsplit, urlunsplit
 
 # Minimum SECRET_KEY length after strip. Prefer secrets.token_urlsafe(32)+.
 SECRET_KEY_MIN_LENGTH = 32
@@ -214,6 +214,20 @@ def postgres_tls_configured(url: str) -> bool:
         return False
 
 
+def lock_declared_postgres_driver(url: str) -> str:
+    """Bind bare PostgreSQL schemes to the declared psycopg2 driver.
+
+    SQLAlchemy 2.1 treats ``postgresql://`` as psycopg v3, which this repo does
+    not install. ``psycopg2-binary`` is the declared runtime driver. Explicit
+    ``postgresql+psycopg`` and ``postgresql+psycopg2`` URLs are left unchanged.
+    """
+    parts = urlsplit(url)
+    scheme = (parts.scheme or "").lower()
+    if scheme in {"postgresql", "postgres"}:
+        return urlunsplit(parts._replace(scheme="postgresql+psycopg2"))
+    return url
+
+
 def validate_database_url(url: str | None) -> str:
     """Validate DATABASE_URL; raise ValueError with a safe (non-secret) message."""
     if url is None or not str(url).strip():
@@ -233,7 +247,7 @@ def validate_database_url(url: str | None) -> str:
         assert_postgres_tls_unambiguous(cleaned)
         if not parsed.hostname:
             raise ValueError("FATAL: DATABASE_URL is missing a hostname.")
-        return cleaned
+        return lock_declared_postgres_driver(cleaned)
 
     raise ValueError(
         "FATAL: DATABASE_URL scheme is not supported. "
