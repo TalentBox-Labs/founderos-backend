@@ -50,11 +50,16 @@ def resolve_n8n_organization_id(*, x_n8n_secret: str | None) -> str | None:
     return None
 
 
-def resolve_integration_org_id() -> str | None:
-    """Organization from human session/cookie for integration credential CRUD."""
-    from revenue_os.services.tenant_mutation_guard import crm_tenant_org_id, resolve_crm_tenant_read
+def resolve_integration_org_id(request=None) -> str | None:  # noqa: ANN001
+    """Organization from human session/cookie for integration credential CRUD.
 
-    return crm_tenant_org_id(resolve_crm_tenant_read())
+    Prefer an explicit ASGI ``request`` when available (OAuth callback continuity).
+    Falls back to the bound request ContextVar for ordinary same-process routes.
+    """
+    from revenue_os.services.tenant_mutation_guard import crm_tenant_org_id
+    from revenue_os.services.tenant_resolution import resolve_tenant_context
+
+    return crm_tenant_org_id(resolve_tenant_context(request))
 
 
 def build_integration_tenant_context(organization_id: str) -> TenantContext:
