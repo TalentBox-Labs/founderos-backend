@@ -10,6 +10,8 @@ from fastapi import Request, Response
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from runner_api_routers.log_redaction import redact_query_string
+
 logger = logging.getLogger(__name__)
 
 
@@ -21,7 +23,7 @@ class StructuredLoggingMiddleware(BaseHTTPMiddleware):
     - Request method, path, status code
     - Request duration (ms)
     - Request/response size
-    - Query parameters and path parameters
+    - Query parameters and path parameters (sensitive OAuth values redacted)
     - Errors with traceback
     """
 
@@ -33,7 +35,8 @@ class StructuredLoggingMiddleware(BaseHTTPMiddleware):
         # Extract relevant request info
         method = request.method
         path = request.url.path
-        query_string = request.url.query or ""
+        # Never log raw OAuth code/state/token query values.
+        query_string = redact_query_string(request.url.query or "")
 
         try:
             response = await call_next(request)

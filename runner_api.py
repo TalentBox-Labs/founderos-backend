@@ -111,6 +111,13 @@ from revenue_os.automation.init import initialize_automation
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Redact OAuth code/state/token values from uvicorn access request lines.
+from runner_api_routers.log_redaction import RedactAccessLogFilter
+
+_access_redact = RedactAccessLogFilter()
+logging.getLogger("uvicorn.access").addFilter(_access_redact)
+logging.getLogger("uvicorn").addFilter(_access_redact)
 from revenue_os.config import settings
 from revenue_os.database import SessionLocal
 from revenue_os.models.activity import (
