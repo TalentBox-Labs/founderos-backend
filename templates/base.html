@@ -247,6 +247,8 @@
     .org-badge { font-size: 11px; color: var(--text-muted); margin-top: 6px; }
     details.nav-collapsed summary { cursor: pointer; font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--text-dim); padding: 0 8px 6px; list-style: none; }
     details.nav-collapsed summary::-webkit-details-marker { display: none; }
+    details.nav-collapsed[open] > summary { color: var(--text-muted); }
+    details.nav-collapsed summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   </style>
   {% block extra_head %}{% endblock %}
 </head>
@@ -282,9 +284,18 @@
   </div>
 
   <div class="nav-section">
-    <details class="nav-collapsed">
-      <summary>Content Ops</summary>
+    {% set content_ops_pages = [
+      'dashboard', 'cockpit', 'analytics', 'weeks', 'content_studio',
+      'editorial', 'publishing', 'seo', 'pipeline', 'marketing', 'sales',
+      'mcp', 'content_ops'
+    ] %}
+    {% set content_ops_nav_open = (active_page|default('')) in content_ops_pages %}
+    <details class="nav-collapsed" data-testid="content-ops-nav"{% if content_ops_nav_open %} open{% endif %}>
+      <summary{% if content_ops_nav_open %} data-current-section="true"{% endif %}>Content Ops</summary>
       <div style="padding-top:4px">
+    <a href="/content-ops" class="nav-item {% if active_page == 'content_ops' %}active{% endif %}" data-testid="nav-content-ops-beta">
+      <span class="icon">▣</span> Content Ops Beta
+    </a>
     <a href="/" class="nav-item {% if active_page == 'dashboard' %}active{% endif %}">
       <span class="icon">⬛</span> Dashboard
     </a>

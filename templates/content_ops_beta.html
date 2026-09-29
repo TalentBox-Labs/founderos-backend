@@ -1,0 +1,384 @@
+{% extends "base.html" %}
+
+{% block title %}Content Ops — Founder OS{% endblock %}
+{% block topbar_title %}Content Ops{% endblock %}
+{% block topbar_meta %}Week control plane · read contract only{% endblock %}
+
+{% block topbar_right %}
+  {% if view.live %}
+  <span class="pill gray content-ops-status-pill">Live read</span>
+  {% else %}
+  <span class="pill amber content-ops-status-pill" data-testid="content-ops-not-live">Mock · not live</span>
+  {% endif %}
+{% endblock %}
+
+{% block extra_head %}
+<style>
+  .cop { display: grid; gap: 18px; }
+  .cop-banner {
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--amber);
+    background: var(--surface);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+  .cop-banner strong { color: var(--text); font-weight: 600; }
+  .cop-scenarios { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .cop-scenarios a {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text-muted);
+    font-size: 12px;
+    text-decoration: none;
+  }
+  .cop-scenarios a:hover { color: var(--text); text-decoration: none; }
+  .cop-scenarios a[aria-current="true"] {
+    color: var(--text);
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+  .cop-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .cop-kicker {
+    font-size: 11px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    font-weight: 600;
+  }
+  .cop-header h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; margin-top: 4px; }
+  .cop-attention { margin-top: 8px; max-width: 62ch; color: var(--text); font-size: 14px; }
+  .cop-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 18px; }
+  .cop-stack { display: grid; gap: 18px; align-content: start; }
+  .cop-card { margin-bottom: 0; }
+  .cop-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
+  .cop-meta dt { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-dim); }
+  .cop-meta dd { font-size: 13px; margin-top: 2px; }
+  .cop-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .cop-pipeline {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  .cop-step {
+    flex: 1 1 112px;
+    min-width: 104px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface2);
+    padding: 10px 12px;
+  }
+  .cop-step-index { display: block; font-size: 10px; color: var(--text-dim); }
+  .cop-step-label { display: block; font-size: 13px; font-weight: 600; margin-top: 2px; }
+  .cop-step-state { display: block; font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+  .cop-step-current { border-color: var(--accent); background: var(--accent-soft); }
+  .cop-step-current .cop-step-label { color: var(--accent); }
+  .cop-step-verified { border-color: #166534; background: var(--green-soft); }
+  .cop-step-verified .cop-step-label { color: var(--green); }
+  .cop-step-idle { color: var(--text-muted); }
+  .cop-note { font-size: 12px; color: var(--text-muted); margin-top: 10px; }
+  .cop-url {
+    margin-top: 10px;
+    font-size: 12px;
+    word-break: break-all;
+    color: var(--text-muted);
+  }
+  .cop-callout {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    background: var(--amber-soft);
+    color: var(--amber);
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .cop-failure {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    background: var(--red-soft);
+    color: var(--red);
+    font-size: 13px;
+  }
+  .cop-verified-action { background: var(--green); color: #052e16; font-weight: 600; }
+  .cop-verified-action:hover { text-decoration: none; color: #052e16; }
+  .cop-empty, .cop-loading, .cop-error {
+    padding: 8px 0 4px;
+  }
+  .cop-empty h1, .cop-error h1, .cop-loading h1 { font-size: 26px; margin: 6px 0 8px; }
+  .cop-skeleton { height: 14px; border-radius: 999px; background: var(--surface2); margin: 10px 0; }
+  .cop-skeleton.wide { width: 72%; }
+  .cop-audit {
+    margin-top: 12px;
+    background: #090b10;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 12px;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 11px;
+    line-height: 1.5;
+    color: #9ca3af;
+    overflow: auto;
+    max-height: 280px;
+  }
+  .cop-result {
+    min-height: 1.2em;
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+  .cop :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .topbar { flex-wrap: wrap; align-items: flex-start; }
+  .content-ops-status-pill { white-space: nowrap; }
+  @media (max-width: 960px) {
+    .cop-grid, .cop-meta { grid-template-columns: 1fr; }
+    .cop-header h1 { font-size: 24px; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="cop" data-testid="content-ops-beta" data-live="{{ 'true' if view.live else 'false' }}" data-source="{{ view.source }}" data-scenario="{{ view.scenario }}" data-read-state="{{ view.read_state }}"{% if view.read_state == 'loading' %} aria-busy="true"{% endif %}>
+
+  <section class="cop-banner" role="status" data-testid="mock-banner">
+    <strong>Beta preview.</strong>
+    {% if view.mock_banner %}
+    Values on this screen come from an isolated mock adapter. They are not live Founder OS publication truth.
+    The sidebar week is the existing runtime label and is not this read.
+    {% else %}
+    This read is marked live by the Content Ops adapter.
+    {% endif %}
+    <div class="cop-note">Target contract: {{ view.contract }}</div>
+    <nav class="cop-scenarios" aria-label="Mock scenario preview" data-testid="scenario-switcher">
+      {% for item in view.scenarios %}
+      <a href="/content-ops?scenario={{ item.id }}" {% if item.id == view.scenario %}aria-current="true"{% endif %}>{{ item.label }}</a>
+      {% endfor %}
+    </nav>
+  </section>
+
+  {% if view.read_state == 'loading' %}
+  <section class="card cop-card cop-loading" data-testid="content-ops-loading" aria-busy="true" aria-live="polite">
+    <div class="cop-kicker">Content Ops</div>
+    <h1>Loading the current week</h1>
+    <p>The read has not returned a week, a publication result, or a verification result.</p>
+    <div class="cop-skeleton wide"></div>
+    <div class="cop-skeleton"></div>
+  </section>
+
+  {% elif view.read_state == 'error' %}
+  <section class="card cop-card cop-error" role="alert" data-testid="content-ops-error" data-error-code="{{ view.error.code }}" data-http-status="{{ view.error.http_status }}">
+    <div class="cop-kicker">Read failed</div>
+    <h1>{{ view.error.title }}</h1>
+    <p>{{ view.error.message }}</p>
+    <p class="cop-note">HTTP {{ view.error.http_status }} · {{ view.error.code }}</p>
+    {% if view.error.week_id %}
+    <p class="cop-note">Conflict refers to week {{ view.error.week_id }}. That reference is not an active published week.</p>
+    {% endif %}
+    {% if view.error.policy %}
+    <p class="cop-note">Policy: {{ view.error.policy }}</p>
+    {% endif %}
+    <p class="cop-note">No publication succeeded. No operator action is available from this read.</p>
+  </section>
+
+  {% elif view.read_state == 'empty' %}
+  <section class="card cop-card cop-empty" data-testid="content-ops-empty">
+    <div class="cop-kicker">Content Ops</div>
+    <h1>No active week</h1>
+    <p>This read has no active Content Ops week. There is no lifecycle stage, publication result, or verification result to show.</p>
+    <p class="cop-note">Nothing here is published, waiting on you, or failed.</p>
+  </section>
+
+  {% else %}
+  <header class="card cop-card" data-testid="content-ops-summary" data-week-id="{{ view.week_id }}" data-stage="{{ view.stage }}">
+    <div class="cop-header">
+      <div>
+        <div class="cop-kicker">Active week</div>
+        <h1>{{ view.week_id }}</h1>
+        <p class="cop-attention" data-testid="content-ops-attention">{{ view.attention }}</p>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+        <span class="pill {{ view.publication.pill }}" data-testid="publication-headline">{{ view.publication.headline }}</span>
+        <span class="pill gray">Stage {{ view.stage_label }}</span>
+      </div>
+    </div>
+    <dl class="cop-meta">
+      <div>
+        <dt>Lifecycle stage</dt>
+        <dd>{{ view.stage_label }}</dd>
+      </div>
+      <div>
+        <dt>Last run reported</dt>
+        <dd>{{ view.run.last_run_at }}</dd>
+      </div>
+      <div>
+        <dt>Next schedule reported</dt>
+        <dd data-testid="next-schedule">{{ view.run.next_schedule_at }}</dd>
+      </div>
+    </dl>
+    {% if view.week_actions %}
+    <div class="cop-actions" aria-label="Week actions">
+      {% for action in view.week_actions %}
+      <button type="button" class="btn btn-{{ action.emphasis }} btn-sm" data-testid="allowed-action" data-action-id="{{ action.id }}" data-executes="false" onclick="contentOpsNote(this)">{{ action.label }}</button>
+      {% endfor %}
+    </div>
+    {% elif not view.has_actions %}
+    <p class="cop-note" data-testid="no-actions">No operator action is permitted by this read.</p>
+    {% endif %}
+    <p id="cop-action-result" class="cop-result" role="status" aria-live="polite" data-testid="action-result"></p>
+  </header>
+
+  <div class="cop-grid">
+    <div class="cop-stack">
+      <section class="card cop-card" aria-labelledby="cop-lifecycle-title" data-testid="lifecycle-panel">
+        <h2 id="cop-lifecycle-title" class="card-title">Lifecycle</h2>
+        <ol class="cop-pipeline" aria-label="Lifecycle position">
+          {% for step in view.pipeline %}
+          <li class="cop-step cop-step-{{ step.state }}" data-step="{{ step.id }}" data-step-state="{{ step.state }}" {% if step.state == 'current' or step.state == 'verified' %}aria-current="step"{% endif %}>
+            <span class="cop-step-index">{{ loop.index }}</span>
+            <span class="cop-step-label">{{ step.label }}</span>
+            <span class="cop-step-state">{{ step.state_label }}</span>
+          </li>
+          {% endfor %}
+        </ol>
+        <p class="cop-note">Position shows the reported stage only. Earlier steps are not marked complete.</p>
+      </section>
+
+      <section class="card cop-card" aria-labelledby="cop-publication-title" data-testid="publication-panel" data-tone="{{ view.publication.tone }}" data-publication-truth="{{ view.publication.truth }}" data-verification-status="{{ view.publication.verification }}">
+        <h2 id="cop-publication-title" class="card-title">
+          Publication and verification
+          <span class="pill {{ view.publication.pill }}">{{ view.publication.headline }}</span>
+        </h2>
+        {% if view.publication.unverified_label %}
+        <p class="cop-callout" data-testid="publication-unverified">{{ view.publication.unverified_label }}</p>
+        {% endif %}
+        <dl class="cop-meta">
+          <div>
+            <dt>Publication status reported</dt>
+            <dd>{{ view.publication.status }}</dd>
+          </div>
+          <div>
+            <dt>Publication truth</dt>
+            <dd data-testid="publication-truth">{{ view.publication.truth }}</dd>
+          </div>
+          <div>
+            <dt>Verification</dt>
+            <dd data-testid="verification-status">{{ view.publication.verification }}</dd>
+          </div>
+        </dl>
+        {% if view.publication.url_on_record %}
+        <p class="cop-url" data-testid="published-url">URL on record: {{ view.publication.url }}</p>
+        {% if not view.publication.show_success_link %}
+        <p class="cop-note" data-testid="url-not-proof">This URL is not proof of publication.</p>
+        {% endif %}
+        {% elif view.publication.url_withheld %}
+        <p class="cop-note" data-testid="url-withheld">A URL was returned with a scheme this screen will not open. It is not publication proof.</p>
+        {% else %}
+        <p class="cop-note">No published URL is on this read.</p>
+        {% endif %}
+        {% if view.publication.show_success_link %}
+        <div class="cop-actions">
+          <a class="btn cop-verified-action btn-sm" data-testid="open-published-success" data-action-id="open_published_url" href="{{ view.publication.url }}" rel="noopener noreferrer">Open published URL</a>
+        </div>
+        {% elif view.publication.withhold_success %}
+        <div class="cop-actions">
+          <button type="button" class="btn btn-ghost btn-sm" disabled aria-disabled="true" data-testid="open-published-withheld" data-action-id="open_published_url" data-success="false">Open published URL</button>
+        </div>
+        <p class="cop-note" data-testid="open-published-withheld-reason">Open published URL is withheld. Publication truth is {{ view.publication.truth }} and verification is {{ view.publication.verification }}.</p>
+        {% endif %}
+        <p class="cop-note">A green mark on this panel means this read reported publication and verification as proven together.</p>
+      </section>
+    </div>
+
+    <div class="cop-stack">
+      <section class="card cop-card" aria-labelledby="cop-qa-title" data-testid="qa-panel">
+        <h2 id="cop-qa-title" class="card-title">QA and risk</h2>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <span class="pill {{ view.qa.pill }}" data-testid="qa-status">QA {{ view.qa.status }}</span>
+          <span class="pill {{ view.qa.risk_pill }}" data-testid="risk-class">Risk {{ view.qa.risk_class }}</span>
+        </div>
+        <p class="cop-note">QA PASS is a quality result. It is not publication.</p>
+      </section>
+
+      <section class="card cop-card" aria-labelledby="cop-decision-title" data-testid="decision-queue">
+        <h2 id="cop-decision-title" class="card-title">Human decision</h2>
+        {% if view.decision_waiting %}
+        <p data-testid="decision-required">{% if view.approval_required %}Approval is required.{% else %}A decision action is permitted.{% endif %}</p>
+        {% if view.decision_blocked %}
+        <p class="cop-callout" data-testid="decision-blocked">Approval is required, but this read did not permit Approve, Reject, or Request changes.</p>
+        {% endif %}
+        {% if view.decision_actions %}
+        <div class="cop-actions" aria-label="Human decision actions">
+          {% for action in view.decision_actions %}
+          <button type="button" class="btn btn-{{ action.emphasis }} btn-sm" data-testid="allowed-action" data-action-id="{{ action.id }}" data-executes="false" onclick="contentOpsNote(this)">{{ action.label }}</button>
+          {% endfor %}
+        </div>
+        {% endif %}
+        {% else %}
+        <p class="founder-empty" data-testid="decision-empty">No human decision is waiting on this read.</p>
+        {% endif %}
+      </section>
+
+      <section class="card cop-card" aria-labelledby="cop-run-title" data-testid="run-panel">
+        <h2 id="cop-run-title" class="card-title">Run and audit</h2>
+        {% if view.run.failure %}
+        <div class="cop-failure" role="alert" data-testid="failure-banner">
+          <div>{{ view.run.failure.code }} · {{ view.run.failure.stage }}</div>
+          <div>{{ view.run.failure.message }}</div>
+        </div>
+        {% else %}
+        <p class="cop-note" data-testid="no-failure">No failure is reported on this read.</p>
+        {% endif %}
+        {% if view.show_artifacts %}
+          {% if view.artifacts %}
+          <div class="cop-actions" aria-label="Artifact references">
+            {% for artifact in view.artifacts %}
+            <button type="button" class="btn btn-ghost btn-sm" data-testid="allowed-action" data-action-id="open_artifact" data-artifact-id="{{ artifact.id }}" data-executes="false" onclick="contentOpsNote(this)">Open artifact · {{ artifact.label }}</button>
+            {% endfor %}
+          </div>
+          {% else %}
+          <p class="cop-note" data-testid="artifact-empty">Open artifact is permitted, but this read included no artifact references.</p>
+          {% endif %}
+        {% endif %}
+        {% if view.show_audit %}
+        <details data-testid="audit-disclosure">
+          <summary data-action-id="view_audit" data-testid="allowed-action">View audit</summary>
+          <p class="cop-note">Raw mock read. Not a live audit log.</p>
+          <pre class="cop-audit">{{ view.audit_json }}</pre>
+        </details>
+        {% endif %}
+        {% if view.unrecognized_actions %}
+        <p class="cop-note" data-testid="unrecognized-actions">Unrecognized allowed actions: {{ view.unrecognized_actions | join(', ') }}</p>
+        {% endif %}
+      </section>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function contentOpsNote(el) {
+  var region = document.getElementById('cop-action-result');
+  if (!region || !el) return;
+  var id = el.getAttribute('data-action-id') || 'action';
+  region.textContent = 'Not submitted. "' + id + '" is shown because this read permitted it. This Beta screen does not execute runs, publication, scheduling, or approvals.';
+}
+</script>
+{% endblock %}

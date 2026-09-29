@@ -40,6 +40,7 @@ _NAME = "Krishna Founder"
 
 CONTENT_OPS_HTML = (
     "/",
+    "/content-ops",
     "/weeks",
     "/content-studio",
     "/editorial",
