@@ -64,6 +64,7 @@ _CONTENT_OPS_HTML_EXACT = frozenset(
         "/seo",
         "/analytics",
         "/mcp",
+        "/content-ops",
     }
 )
 _CONTENT_OPS_HTML_PREFIXES = (

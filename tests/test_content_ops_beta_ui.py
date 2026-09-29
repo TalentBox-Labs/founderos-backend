@@ -13,7 +13,7 @@ import runner_api_routers.ui as ui_mod
 from src.ui.content_ops_beta.contract import PROJECTION_FIELDS, TARGET_READ_CONTRACT, empty_projection
 from src.ui.content_ops_beta.mock_adapter import SCENARIO_CATALOG, MockContentOpsReadAdapter
 from src.ui.content_ops_beta.presenter import present_content_ops_read
-from src.ui.content_ops_beta.reader import set_content_ops_reader
+from src.ui.content_ops_beta.reader import FIXTURE_ENV, set_content_ops_reader
 
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE = ROOT / "templates" / "content_ops_beta.html"
@@ -43,7 +43,8 @@ def client(cms_client: TestClient) -> TestClient:
 
 
 @pytest.fixture(autouse=True)
-def _reset_reader() -> None:
+def _reset_reader(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(FIXTURE_ENV, "1")
     set_content_ops_reader(None)
     yield
     set_content_ops_reader(None)
@@ -52,7 +53,11 @@ def _reset_reader() -> None:
 def _page(client: TestClient, scenario: str | None = None) -> str:
     path = "/content-ops" if scenario is None else f"/content-ops?scenario={scenario}"
     response = client.get(path)
-    assert response.status_code == 200, response.text
+    if scenario and scenario.startswith("http_"):
+        expected = int(scenario.split("_", 1)[1])
+        assert response.status_code == expected, response.text
+    else:
+        assert response.status_code == 200, response.text
     return response.text
 
 
@@ -69,10 +74,14 @@ def _panel(html: str, testid: str) -> str:
     return match.group(1)
 
 
-def _nav_open(html: str) -> bool:
+def _nav_tag(html: str) -> str:
     match = re.search(r'<details\b[^>]*data-testid="content-ops-nav"[^>]*>', html)
     assert match, html[html.find("Content Ops") : html.find("Content Ops") + 200]
-    return bool(re.search(r"\sopen(?:\s|>)", match.group(0)))
+    return match.group(0)
+
+
+def _nav_open(html: str) -> bool:
+    return bool(re.search(r"\sopen(?:\s|>)", _nav_tag(html)))
 
 
 def test_mock_adapter_is_isolated_and_not_live() -> None:
@@ -130,15 +139,15 @@ def test_default_page_is_empty_mock(client: TestClient) -> None:
 @pytest.mark.parametrize(
     ("scenario", "headline"),
     [
-        ("research_drafting", "NOT PUBLISHED"),
-        ("qa_pass", "NOT PUBLISHED"),
-        ("human_review", "NOT PUBLISHED"),
-        ("approved_publish_pending", "NOT PUBLISHED"),
-        ("publication_unproven", "PUBLICATION UNPROVEN"),
-        ("verification_pending", "VERIFICATION PENDING"),
-        ("verified", "PUBLISHED / VERIFIED"),
-        ("unknown_remote", "PUBLICATION UNKNOWN"),
-        ("failed", "NOT PUBLISHED"),
+        ("research_drafting", "Publication unverified"),
+        ("qa_pass", "Publication unverified"),
+        ("human_review", "Publication unverified"),
+        ("approved_publish_pending", "Publication unverified"),
+        ("publication_unproven", "Publication unverified"),
+        ("verification_pending", "Verification pending"),
+        ("verified", "Published &amp; verified"),
+        ("unknown_remote", "Remote status unknown"),
+        ("failed", "Publication failed"),
     ],
 )
 def test_publication_headline_follows_contract(
@@ -155,7 +164,7 @@ def test_publication_headline_follows_contract(
         assert 'data-tone="verified"' not in panel
         assert 'data-testid="open-published-success"' not in html
         assert re.search(r'class="[^"]*cop-verified-action', html) is None
-        assert "PUBLISHED / VERIFIED" not in html
+        assert "Published &amp; verified" not in html
 
 
 def test_unproven_url_is_not_a_success_link(client: TestClient) -> None:
@@ -163,10 +172,10 @@ def test_unproven_url_is_not_a_success_link(client: TestClient) -> None:
     panel = _panel(html, "publication-panel")
     assert "https://example.invalid/content/w12" in panel
     assert 'data-testid="url-not-proof"' in panel
-    assert 'data-testid="open-published-withheld"' in panel
+    assert 'data-testid="open-published-withheld"' not in panel
     assert "pill green" not in panel
-    assert 'data-publication-truth="UNPROVEN"' in panel
-    assert 'data-action-id="open_published_url"' in panel
+    assert 'data-publication-truth="unproven"' in panel
+    assert 'data-action-id="open_published_url"' not in panel
     success = re.search(r'<a\b[^>]*data-testid="open-published-success"', html)
     assert success is None
 
@@ -174,12 +183,12 @@ def test_unproven_url_is_not_a_success_link(client: TestClient) -> None:
 def test_unverified_pending_is_distinct_from_verified(client: TestClient) -> None:
     pending = _page(client, "verification_pending")
     verified = _page(client, "verified")
-    assert "VERIFICATION PENDING" in pending
-    assert "PUBLICATION UNVERIFIED" in pending
-    assert "PUBLISHED / VERIFIED" not in pending
+    assert 'data-testid="publication-headline">Verification pending<' in pending
+    assert "remote_write_confirmed" in pending
+    assert "Published &amp; verified" not in pending
     assert 'data-testid="open-published-success"' not in pending
-    assert "PUBLISHED / VERIFIED" in verified
-    assert "PUBLICATION UNVERIFIED" not in verified
+    assert 'data-testid="publication-headline">Published &amp; verified<' in verified
+    assert 'data-testid="publication-headline">Verification pending<' not in verified
     assert 'data-testid="publication-unverified"' not in verified
 
 
@@ -197,7 +206,11 @@ def test_failed_state_shows_blocker_without_success(client: TestClient) -> None:
     html = _page(client, "failed")
     assert 'data-testid="failure-banner"' in html
     assert "Draft stage failed. No publication was attempted." in html
-    assert "retry_failed_stage" in _action_ids(html)
+    assert "retry" in _action_ids(html)
+    assert "cancel" in _action_ids(html)
+    assert "retry_failed_stage" not in _action_ids(html)
+    assert "pause_week" not in html
+    assert "cancel_run" not in html
     assert "open_published_url" not in _action_ids(html)
     assert 'data-testid="open-published-success"' not in html
 
@@ -206,8 +219,11 @@ def test_unknown_remote_is_not_success(client: TestClient) -> None:
     html = _page(client, "unknown_remote")
     panel = _panel(html, "publication-panel")
     assert 'data-tone="unknown"' in panel
+    assert 'data-publication-truth="unknown_remote"' in panel
+    assert "Publication failed" not in panel
     assert "pill green" not in panel
     assert 'data-testid="url-not-proof"' in panel
+    assert 'data-testid="open-published-success"' not in panel
     assert _action_ids(html) == {"view_audit"}
 
 
@@ -269,7 +285,9 @@ def test_human_review_capabilities_only(client: TestClient) -> None:
 
 def test_research_capabilities_exclude_decisions(client: TestClient) -> None:
     html = _page(client, "research_drafting")
-    assert _action_ids(html) == {"run_now", "pause_week", "open_artifact", "view_audit"}
+    assert _action_ids(html) == {"run_now", "open_artifact", "view_audit"}
+    assert "pause_week" not in html
+    assert "resume" not in html
     assert 'data-testid="decision-empty"' in html
     assert 'data-week-id="W12"' in html
     assert 'data-stage="drafting"' in html
@@ -282,12 +300,23 @@ def test_verified_pipeline_marks_only_verification(client: TestClient) -> None:
     assert "Earlier steps are not marked complete." in html
 
 
-def test_actions_do_not_call_mutation_endpoints() -> None:
+def test_actions_use_existing_routes_without_publish() -> None:
     text = TEMPLATE.read_text(encoding="utf-8")
-    assert "fetch(" not in text
-    assert "/api/v1/publishing" not in text
-    assert "contentOpsNote" in text
-    assert "does not execute runs, publication, scheduling, or approvals" in text
+    assert "fetch(" in text
+    assert "credentials: 'same-origin'" in text
+    assert "url: '/generate'" in text
+    assert "/api/v1/editorial/" in text
+    assert "/api/v1/publishing/" in text
+    assert "'/publish'" not in text
+    assert "go-live" not in text
+    assert "hashnode" not in text
+    assert "organization_id" not in text
+    assert "will not be retried automatically" in text
+    assert "will not send the action again automatically" in text
+    assert "pause_week" not in text
+    assert "resume" not in text
+    assert "cancel_run" not in text
+    assert "retry_failed_stage" not in text
 
 
 def test_route_does_not_read_publication_authority() -> None:
@@ -329,8 +358,8 @@ def test_presenter_refuses_false_publication_success() -> None:
             "week_id": "W12",
             "stage": "publication",
             "publication_status": "REPORTED",
-            "publication_truth": "UNPROVEN",
-            "verification_status": "UNVERIFIED",
+            "publication_truth": "unproven",
+            "verification_status": "unproven",
             "published_url": "https://example.invalid/content/w12",
             "allowed_actions": ["open_published_url"],
         }
@@ -352,7 +381,7 @@ def test_presenter_refuses_false_publication_success() -> None:
     assert view["http_status"] == 200
     assert view["publication"]["show_success_link"] is False
     assert view["publication"]["withhold_success"] is True
-    assert view["publication"]["headline"] == "PUBLICATION UNPROVEN"
+    assert view["publication"]["headline"] == "Publication unverified"
     assert view["publication"]["tone"] != "verified"
     assert view["publication"]["pill"] != "green"
 
@@ -377,31 +406,32 @@ def test_presenter_requires_both_truths_and_the_action() -> None:
         )
 
     proven = view_for(
-        publication_truth="PUBLISHED",
-        verification_status="VERIFIED",
+        publication_truth="verified",
+        verification_status="verified",
         published_url="https://example.invalid/ok",
         allowed_actions=["open_published_url"],
     )
     assert proven["publication"]["show_success_link"] is True
     missing_action = view_for(
-        publication_truth="PUBLISHED",
-        verification_status="VERIFIED",
+        publication_truth="verified",
+        verification_status="verified",
         published_url="https://example.invalid/ok",
         allowed_actions=["view_audit"],
     )
     assert missing_action["publication"]["show_success_link"] is False
-    assert missing_action["publication"]["headline"] == "PUBLISHED / VERIFIED"
+    assert missing_action["publication"]["headline"] == "Published & verified"
     pending = view_for(
-        publication_truth="PUBLISHED",
-        verification_status="PENDING",
+        publication_truth="remote_write_confirmed",
+        verification_status="verification_pending",
         published_url="https://example.invalid/ok",
         allowed_actions=["open_published_url"],
     )
     assert pending["publication"]["show_success_link"] is False
-    assert pending["publication"]["headline"] == "VERIFICATION PENDING"
+    assert pending["publication"]["headline"] == "Verification pending"
+    assert pending["publication"]["tone"] != "verified"
     unsafe = view_for(
-        publication_truth="PUBLISHED",
-        verification_status="VERIFIED",
+        publication_truth="verified",
+        verification_status="verified",
         published_url="javascript:alert(1)",
         allowed_actions=["open_published_url"],
     )
@@ -435,11 +465,18 @@ def test_content_ops_nav_stays_open_on_content_pages(client: TestClient) -> None
     assert weeks.status_code == 200
     assert login.status_code == 200
     assert _nav_open(beta)
+    assert 'data-persistent="true"' in _nav_tag(beta)
+    assert 'href="/editorial"' in beta
+    assert 'href="/content-studio"' in beta
     assert 'data-current-section="true"' in beta
     assert 'data-testid="nav-content-ops-beta"' in beta
     assert 'href="/content-ops"' in beta
     assert _nav_open(weeks.text)
+    assert 'data-persistent="true"' in _nav_tag(weeks.text)
+    assert 'href="/content-ops"' in weeks.text
+    assert 'href="/editorial"' in weeks.text
     assert _nav_open(login.text) is False
+    assert 'data-persistent="true"' not in _nav_tag(login.text)
     assert 'href="/command"' in login.text
     assert 'href="/demand"' in login.text
     assert 'href="/pending-approvals"' in login.text

@@ -53,8 +53,9 @@ from revenue_os.services.tenant_resolution import resolve_tenant_context
 from revenue_os.services.qualified_demand_service import SOURCE_TO_CONTACT
 from runner_api_routers.cockpit import cockpit_operator_status
 from runner_api_routers.identity import founder_login_redirect, identity_from_request
+from src.ui.content_ops_beta.live_reader import envelope_for_status
 from src.ui.content_ops_beta.presenter import present_content_ops_read
-from src.ui.content_ops_beta.reader import get_content_ops_reader
+from src.ui.content_ops_beta.reader import fixture_mode, get_content_ops_reader
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["ui"])
@@ -842,17 +843,33 @@ def page_cockpit(request: Request) -> HTMLResponse | RedirectResponse:
 def page_content_ops(
     request: Request, scenario: str | None = None
 ) -> HTMLResponse | RedirectResponse:
-    """Content Ops Beta — mockable read surface. Does not publish or schedule."""
-    redirected = founder_login_redirect(request)
+    """Content Ops Beta read. Live projection unless fixture mode is explicit."""
+    try:
+        redirected = founder_login_redirect(request)
+    except HTTPException as exc:
+        raw = envelope_for_status(exc.status_code)
+        ctx = _founder_page_context(request, active_page="content_ops")
+        ctx["view"] = present_content_ops_read(raw)
+        return templates.TemplateResponse(
+            request=request,
+            name="content_ops_beta.html",
+            context=ctx,
+            status_code=exc.status_code,
+        )
     if redirected is not None:
         return redirected
-    raw = get_content_ops_reader().read_current_week(scenario)
+    selected = scenario if fixture_mode() else None
+    raw = get_content_ops_reader().read_current_week(selected)
     ctx = _founder_page_context(request, active_page="content_ops")
     ctx["view"] = present_content_ops_read(raw)
+    status = 200
+    if isinstance(raw, dict) and not raw.get("ok"):
+        status = int(raw.get("http_status") or 500)
     return templates.TemplateResponse(
         request=request,
         name="content_ops_beta.html",
         context=ctx,
+        status_code=status,
     )
 
 

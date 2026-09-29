@@ -1,8 +1,8 @@
-"""Isolated mock adapter for the Content Ops Beta read contract.
+"""Fixture adapter for Content Ops Beta tests and local fixture mode.
 
 This module does not read the content tracker, page metadata, local files, or
-any publisher. Every payload is labeled source=mock and live=false. Replace
-`get_content_ops_reader` when GET /api/v1/content-ops/weeks/current exists.
+any publisher. Every payload is labeled source=mock and live=false. It is not
+the Beta runtime reader. Set FOUNDER_OS_CONTENT_OPS_BETA_FIXTURE=1 to select it.
 """
 
 from __future__ import annotations
@@ -91,7 +91,14 @@ def _error(
 
 
 def _artifacts(*pairs: tuple[str, str]) -> list[dict[str, str]]:
-    return [{"id": item_id, "label": label} for item_id, label in pairs]
+    return [
+        {
+            "id": item_id,
+            "label": label,
+            "path": f"input/W12/{item_id}.md",
+        }
+        for item_id, label in pairs
+    ]
 
 
 class MockContentOpsReadAdapter:
@@ -141,15 +148,15 @@ def _research_drafting() -> dict[str, Any]:
         qa_status="NOT_RUN",
         risk_class="LOW",
         approval_required=False,
-        publication_status="NOT_PUBLISHED",
-        publication_truth="NOT_PUBLISHED",
-        verification_status="NOT_APPLICABLE",
+        publication_status="not_started",
+        publication_truth="unproven",
+        verification_status="unproven",
         last_run_at="2026-09-28T09:00:00Z",
         next_schedule_at="2026-09-30T09:00:00Z",
         failure=None,
         artifact_refs=_artifacts(("w12-brief", "Week brief")),
         published_url=None,
-        allowed_actions=["run_now", "pause_week", "open_artifact", "view_audit"],
+        allowed_actions=["run_now", "open_artifact", "view_audit"],
     )
 
 
@@ -162,15 +169,15 @@ def _qa_pass() -> dict[str, Any]:
         qa_status="PASS",
         risk_class="LOW",
         approval_required=False,
-        publication_status="NOT_PUBLISHED",
-        publication_truth="NOT_PUBLISHED",
-        verification_status="NOT_APPLICABLE",
+        publication_status="not_started",
+        publication_truth="unproven",
+        verification_status="unproven",
         last_run_at="2026-09-28T11:00:00Z",
         next_schedule_at="2026-09-30T09:00:00Z",
         failure=None,
         artifact_refs=_artifacts(("w12-draft", "Draft"), ("w12-qa", "QA report")),
         published_url=None,
-        allowed_actions=["pause_week", "open_artifact", "view_audit"],
+        allowed_actions=["open_artifact", "view_audit"],
     )
 
 
@@ -183,9 +190,9 @@ def _human_review() -> dict[str, Any]:
         qa_status="PASS",
         risk_class="MEDIUM",
         approval_required=True,
-        publication_status="NOT_PUBLISHED",
-        publication_truth="NOT_PUBLISHED",
-        verification_status="NOT_APPLICABLE",
+        publication_status="not_started",
+        publication_truth="unproven",
+        verification_status="unproven",
         last_run_at="2026-09-28T12:00:00Z",
         next_schedule_at=None,
         failure=None,
@@ -204,15 +211,15 @@ def _approved_publish_pending() -> dict[str, Any]:
         qa_status="PASS",
         risk_class="MEDIUM",
         approval_required=False,
-        publication_status="PENDING",
-        publication_truth="NOT_PUBLISHED",
-        verification_status="NOT_STARTED",
+        publication_status="not_started",
+        publication_truth="unproven",
+        verification_status="unproven",
         last_run_at="2026-09-28T13:00:00Z",
         next_schedule_at="2026-09-30T15:00:00Z",
         failure=None,
         artifact_refs=_artifacts(("w12-final", "Final draft")),
         published_url=None,
-        allowed_actions=["pause_week", "cancel_run", "open_artifact", "view_audit"],
+        allowed_actions=["open_artifact", "view_audit"],
     )
 
 
@@ -221,24 +228,19 @@ def _publication_unproven() -> dict[str, Any]:
         "publication_unproven",
         week_id="W12",
         stage="publication",
-        next_action="A URL is on record. Publication is UNPROVEN.",
+        next_action="A URL is on record. Publication is unproven.",
         qa_status="PASS",
         risk_class="HIGH",
         approval_required=False,
-        publication_status="REPORTED",
-        publication_truth="UNPROVEN",
-        verification_status="UNVERIFIED",
+        publication_status="not_started",
+        publication_truth="unproven",
+        verification_status="unproven",
         last_run_at="2026-09-28T14:00:00Z",
         next_schedule_at=None,
         failure=None,
         artifact_refs=_artifacts(("w12-final", "Final draft")),
         published_url=_SAMPLE_URL,
-        allowed_actions=[
-            "open_published_url",
-            "open_artifact",
-            "view_audit",
-            "retry_failed_stage",
-        ],
+        allowed_actions=["open_artifact", "view_audit"],
     )
 
 
@@ -251,15 +253,15 @@ def _verification_pending() -> dict[str, Any]:
         qa_status="PASS",
         risk_class="MEDIUM",
         approval_required=False,
-        publication_status="SUBMITTED",
-        publication_truth="UNVERIFIED",
-        verification_status="PENDING",
+        publication_status="published",
+        publication_truth="remote_write_confirmed",
+        verification_status="verification_pending",
         last_run_at="2026-09-28T15:00:00Z",
-        next_schedule_at="2026-09-29T18:00:00Z",
+        next_schedule_at=None,
         failure=None,
         artifact_refs=_artifacts(("w12-final", "Final draft")),
         published_url=_SAMPLE_URL,
-        allowed_actions=["open_published_url", "view_audit", "open_artifact"],
+        allowed_actions=["view_audit", "open_artifact"],
     )
 
 
@@ -268,19 +270,20 @@ def _verified() -> dict[str, Any]:
         "verified",
         week_id="W12",
         stage="verified",
-        next_action="Publication truth is PUBLISHED and verification is VERIFIED.",
+        next_action="Publication truth is verified.",
         qa_status="PASS",
         risk_class="LOW",
         approval_required=False,
-        publication_status="PUBLISHED",
-        publication_truth="PUBLISHED",
-        verification_status="VERIFIED",
+        publication_status="published",
+        publication_truth="verified",
+        verification_status="verified",
         last_run_at="2026-09-28T16:00:00Z",
         next_schedule_at=None,
         failure=None,
         artifact_refs=_artifacts(("w12-final", "Final draft")),
         published_url=_SAMPLE_URL,
-        allowed_actions=["open_published_url", "open_artifact", "view_audit", "pause_week"],
+        publication_job_id="job-w12-verified",
+        allowed_actions=["open_published_url", "open_artifact", "view_audit"],
     )
 
 
@@ -293,9 +296,9 @@ def _failed() -> dict[str, Any]:
         qa_status="FAIL",
         risk_class="HIGH",
         approval_required=False,
-        publication_status="NOT_PUBLISHED",
-        publication_truth="NOT_PUBLISHED",
-        verification_status="NOT_APPLICABLE",
+        publication_status="failed",
+        publication_truth="failed",
+        verification_status="failed",
         last_run_at="2026-09-28T10:30:00Z",
         next_schedule_at=None,
         failure={
@@ -305,7 +308,8 @@ def _failed() -> dict[str, Any]:
         },
         artifact_refs=_artifacts(("w12-brief", "Week brief")),
         published_url=None,
-        allowed_actions=["retry_failed_stage", "view_audit", "open_artifact", "cancel_run"],
+        publication_job_id="job-w12-failed",
+        allowed_actions=["retry", "cancel", "view_audit", "open_artifact"],
     )
 
 
@@ -313,14 +317,14 @@ def _unknown_remote() -> dict[str, Any]:
     return _ready(
         "unknown_remote",
         week_id="W12",
-        stage="UNKNOWN",
-        next_action="Remote state is UNKNOWN. Do not treat this week as published.",
+        stage="publication",
+        next_action="Remote status is unknown. Do not treat this week as published or failed.",
         qa_status="UNKNOWN",
         risk_class="UNKNOWN",
         approval_required=False,
-        publication_status="UNKNOWN",
-        publication_truth="UNKNOWN",
-        verification_status="UNKNOWN",
+        publication_status="unknown_remote",
+        publication_truth="unknown_remote",
+        verification_status="unknown_remote",
         last_run_at=None,
         next_schedule_at=None,
         failure=None,

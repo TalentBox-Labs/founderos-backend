@@ -31,16 +31,25 @@ PROJECTION_FIELDS = (
 
 ACTION_CATALOG: dict[str, dict[str, str]] = {
     "run_now": {"label": "Run now", "group": "week"},
-    "pause_week": {"label": "Pause week", "group": "week"},
-    "resume": {"label": "Resume", "group": "week"},
     "approve": {"label": "Approve", "group": "decision"},
     "reject": {"label": "Reject", "group": "decision"},
     "request_changes": {"label": "Request changes", "group": "decision"},
-    "cancel_run": {"label": "Cancel run", "group": "week"},
-    "retry_failed_stage": {"label": "Retry failed stage", "group": "week"},
+    "retry": {"label": "Retry", "group": "week"},
+    "cancel": {"label": "Cancel", "group": "week"},
     "open_artifact": {"label": "Open artifact", "group": "audit"},
     "open_published_url": {"label": "Open published URL", "group": "publication"},
     "view_audit": {"label": "View audit", "group": "audit"},
+}
+
+# Presentation labels for authoritative publication-truth tokens.
+# These are display strings. They are not a second truth model.
+TRUTH_PRESENTATION: dict[str, tuple[str, str]] = {
+    "unproven": ("Publication unverified", "attention"),
+    "remote_write_confirmed": ("Remote write confirmed", "attention"),
+    "verification_pending": ("Verification pending", "attention"),
+    "verified": ("Published & verified", "verified"),
+    "failed": ("Publication failed", "risk"),
+    "unknown_remote": ("Remote status unknown", "unknown"),
 }
 
 PIPELINE_STEPS: tuple[tuple[str, str], ...] = (
