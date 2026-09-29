@@ -73,7 +73,10 @@ def _compat_api_auth_override(request: pytest.FixtureRequest):
     opt out via ``real_api_auth`` marker or module name.
     """
     nodeid = request.node.nodeid
-    if "test_content_ops_auth_boundary" in nodeid:
+    if (
+        "test_content_ops_auth_boundary" in nodeid
+        or "test_content_ops_p0_service_authority" in nodeid
+    ):
         yield
         return
     if request.node.get_closest_marker("real_api_auth") is not None:

@@ -11,6 +11,8 @@ from typing import Any
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from revenue_os.services.content_ops_authority import require_content_ops_access
+
 # Constants
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 PIPELINE_TIMEOUT_SEC = int(os.environ.get("RUNNER_PIPELINE_TIMEOUT_SEC", "1800"))
@@ -70,8 +72,15 @@ async def require_human_or_api_key(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(security),
 ) -> str:
-    """Explicit CLASS HS alias of ``_verify_api_key`` for Content Ops surfaces."""
-    return await _verify_api_key(request, credentials)
+    """Content Ops gate: HUMAN beta-tenant only.
+
+    A valid ``RUNNER_API_KEY`` is SERVICE authentication for other surfaces.
+    It is not human authority and not tenant authority here. ``credentials``
+    is accepted so existing dependency overrides keep the same signature; the
+    bearer value is never returned and never treated as an approver.
+    """
+    del credentials
+    return require_content_ops_access(request)
 
 
 def _validate_week_id(week_id: str) -> None:

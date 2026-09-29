@@ -376,6 +376,13 @@ def founder_login_redirect(request: Request) -> RedirectResponse | None:
         return None
     ctx = identity_from_request(request)
     if ctx is not None and ctx.is_human:
+        # content_ops_authority imports identity_from_request from this module.
+        # Keep this import inside the function so module load stays acyclic.
+        from revenue_os.services.content_ops_authority import (
+            enforce_content_ops_html_tenant,
+        )
+
+        enforce_content_ops_html_tenant(request)
         return None
     nxt = quote(request.url.path, safe="/")
     return RedirectResponse(url=f"/login?next={nxt}", status_code=303)

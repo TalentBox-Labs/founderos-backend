@@ -9,10 +9,11 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from runner_api_routers.content_studio import build_content_detail, build_content_list
+from revenue_os.services.content_ops_authority import content_ops_human_actor
 from runner_api_routers.utils import PROJECT_ROOT, require_human_or_api_key
 from src.tools import editorial_approval as ea
 
@@ -284,6 +285,13 @@ def build_editorial_pending() -> dict[str, Any]:
     }
 
 
+def _decision_body(request: Request, body: EditorialDecisionRequest) -> EditorialDecisionRequest:
+    """Record the session human. Client approver text is not authority."""
+    return body.model_copy(
+        update={"approver": content_ops_human_actor(request, body.approver)}
+    )
+
+
 def _run_decision(
     content_id: str,
     decision: str,
@@ -368,30 +376,37 @@ def get_editorial_item(
 def post_editorial_approve(
     content_id: str,
     body: EditorialDecisionRequest,
+    request: Request,
     _: str | None = Depends(require_human_or_api_key),
 ) -> dict[str, Any]:
     """Human approve → phase-scoped promote only (FDR-001/002). Does not publish (FDR-003)."""
     logger.info("Editorial approve", extra={"content_id": content_id})
-    return _run_decision(content_id, ea.DECISION_APPROVE, body)
+    return _run_decision(content_id, ea.DECISION_APPROVE, _decision_body(request, body))
 
 
 @router.post("/{content_id}/reject", tags=["editorial"])
 def post_editorial_reject(
     content_id: str,
     body: EditorialDecisionRequest,
+    request: Request,
     _: str | None = Depends(require_human_or_api_key),
 ) -> dict[str, Any]:
     """Human reject — audit only; no promote; no publish."""
     logger.info("Editorial reject", extra={"content_id": content_id})
-    return _run_decision(content_id, ea.DECISION_REJECT, body)
+    return _run_decision(content_id, ea.DECISION_REJECT, _decision_body(request, body))
 
 
 @router.post("/{content_id}/request-changes", tags=["editorial"])
 def post_editorial_request_changes(
     content_id: str,
     body: EditorialDecisionRequest,
+    request: Request,
     _: str | None = Depends(require_human_or_api_key),
 ) -> dict[str, Any]:
     """Human request-changes — audit only; no promote; no publish."""
     logger.info("Editorial request-changes", extra={"content_id": content_id})
-    return _run_decision(content_id, ea.DECISION_REQUEST_CHANGES, body)
+    return _run_decision(
+        content_id,
+        ea.DECISION_REQUEST_CHANGES,
+        _decision_body(request, body),
+    )
