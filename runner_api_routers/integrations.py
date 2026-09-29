@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import RedirectResponse
 from jose import JWTError, jwt
 
 from revenue_os.config import settings
@@ -657,12 +658,32 @@ def _gmail_oauth_persist_organization_id(
     return persist_org
 
 
+def _browser_document_navigation(request: Request) -> bool:
+    """True for top-level browser document navigations (not XHR/fetch/TestClient).
+
+    Live incident class: opening ``/gmail/authorize`` as a document returns JSON
+    whose ``authorize_url`` sits beside ``organization_id``. Browser URL
+    linkifiers / copy-paste then append ``","organization_id":"<uuid>`` into the
+    OAuth ``state`` query value. Google echoes the polluted state; callback JWT
+    verify fails closed. Document navigations must 302 to Google with a clean URL.
+    """
+    mode = (request.headers.get("sec-fetch-mode") or "").strip().lower()
+    if mode == "navigate":
+        return True
+    dest = (request.headers.get("sec-fetch-dest") or "").strip().lower()
+    return dest == "document"
+
+
 @router.get("/gmail/authorize", tags=["integrations"])
 def gmail_authorize(
     request: Request,
     _: str | None = Depends(_verify_api_key),
-) -> dict[str, Any]:
-    """Build the Google consent URL for the founder to open and approve."""
+) -> Any:
+    """Build the Google consent URL for the founder to open and approve.
+
+    - Browser document navigation → 302 redirect to Google (clean state).
+    - XHR/fetch/API clients → JSON ``authorize_url`` for programmatic open.
+    """
     from revenue_os.integrations.gmail_sync import build_authorize_url
     from revenue_os.services.credentials_vault import load_credentials
 
@@ -684,7 +705,12 @@ def gmail_authorize(
     url = build_authorize_url(
         config["client_id"], config["redirect_uri"], state=signed_state
     )
-    return {"ok": True, "authorize_url": url, "organization_id": str(org_id)}
+    if _browser_document_navigation(request):
+        # Top-level navigation must never render JSON next to authorize_url.
+        return RedirectResponse(url=url, status_code=302)
+    # organization_id first so any residual JSON linkification cannot append
+    # a trailing object field into the authorize_url / state query value.
+    return {"ok": True, "organization_id": str(org_id), "authorize_url": url}
 
 
 @router.get("/gmail/callback", tags=["integrations"])
