@@ -90,10 +90,13 @@ class TestPublishingEngineCore:
             requested_by="Human A",
         )
         published = pe.manual_publish(job["job_id"], requested_by="Human A")
-        assert published["state"] == pe.STATE_PUBLISHED
+        assert published["state"] == pe.STATE_FAILED
+        assert published["publication_truth"] == "unproven"
+        assert published["state"] != pe.STATE_PUBLISHED
         assert published["adapter_result"]["status"] == "PLACEHOLDER"
         assert published["adapter_result"]["rendering_performed"] is False
         assert published["adapter_result"]["website_engine_invoked"] is False
+        assert published["adapter_result"]["ok"] is True
 
     def test_social_channel_not_implemented(
         self, publishing_env: dict[str, Any]
@@ -169,15 +172,41 @@ class TestPublishingEngineCore:
                 requested_by="Human A",
             )
 
-    def test_duplicate_publish(self, publishing_env: dict[str, Any]) -> None:
+    def test_duplicate_publish_requires_remote_proof(
+        self, publishing_env: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         job = pe.create_publish_job(
             content_id="W99",
             channel="website",
             requested_by="Human A",
         )
-        pe.manual_publish(job["job_id"], requested_by="Human A")
+        first = pe.manual_publish(job["job_id"], requested_by="Human A")
+        assert first["state"] != pe.STATE_PUBLISHED
+        second = pe.manual_publish(job["job_id"], requested_by="Human A")
+        assert second["state"] != pe.STATE_PUBLISHED
+
+        def _remote_ack(job_payload: dict[str, Any]) -> dict[str, Any]:
+            return {
+                "ok": True,
+                "remote_write_acknowledged": True,
+                "remote_object_id": "cms-object-1",
+                "external_http": True,
+                "rendering_performed": True,
+                "http_status": 200,
+            }
+
+        monkeypatch.setitem(pe.ADAPTERS, "website", _remote_ack)
+        fresh = pe.create_publish_job(
+            content_id="W99",
+            channel="website",
+            requested_by="Human A",
+        )
+        proved = pe.manual_publish(fresh["job_id"], requested_by="Human A")
+        assert proved["state"] == pe.STATE_PUBLISHED
+        assert proved["publication_truth"] == "remote_write_confirmed"
+        assert proved["verification_status"] == "verification_pending"
         with pytest.raises(LookupError, match="already published"):
-            pe.manual_publish(job["job_id"], requested_by="Human A")
+            pe.manual_publish(fresh["job_id"], requested_by="Human A")
 
 
 class TestPublishingAPI:
@@ -211,7 +240,9 @@ class TestPublishingAPI:
             json={"requested_by": "API Human"},
         )
         assert p.status_code == 200
-        assert p.json()["state"] == "published"
+        body = p.json()
+        assert body["state"] != "published"
+        assert body["job"]["publication_truth"] == "unproven"
 
     def test_api_retry_cancel_permissions(
         self, cms_client: TestClient, publishing_env: dict[str, Any]

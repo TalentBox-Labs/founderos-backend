@@ -162,8 +162,8 @@ article_title: Best LinkedIn Recruiter Alternatives for Modern Hiring Teams
 primary_keyword: linkedin recruiter alternatives
 search_intent: commercial investigation
 funnel_stage: consideration
-status: published
-publish_status: published
+status: ready
+publish_status: ready
 canonical_url: https://workcrew.ai/blog/{slug}-linkedin-recruiter-alternatives
 cta_type: free-trial
 ---

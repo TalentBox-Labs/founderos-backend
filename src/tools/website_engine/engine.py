@@ -113,9 +113,9 @@ def publish_content(
 
     return success_result(
         message=(
-            "Website Engine rendered Markdown→HTML and published "
-            f"artifacts for {content.content_id} via {provider_result.provider} "
-            "(orchestration-compatible result)."
+            "Website Engine rendered Markdown to HTML and wrote local artifacts "
+            f"for {content.content_id} via {provider_result.provider}. "
+            "Local artifact writes are not remote publication."
         ),
         content_id=content.content_id,
         slug=slug,

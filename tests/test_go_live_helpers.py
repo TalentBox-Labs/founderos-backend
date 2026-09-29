@@ -119,12 +119,13 @@ def test_record_live_updates_ready_and_tracker(tmp_path, monkeypatch):
     monkeypatch.setattr(gl, "TRACKER_PATH", csv_path)
     monkeypatch.setattr(gl, "REPO_ROOT", root)
 
-    assert gl.record_live(["WZ"], confirmed=True) == 0
+    assert gl.record_live(["WZ"], confirmed=True) == 3
     text = fin.read_text(encoding="utf-8")
-    assert "publish_status: published" in text.lower() or "published" in text
+    assert "publish_status: Ready" in text
+    assert "publish_status: published" not in text.lower()
     rows = list(csv.DictReader(csv_path.open(encoding="utf-8")))
-    assert rows[0]["current_step"] == "Completed"
-    assert rows[0]["next_step"] == "None"
+    assert rows[0]["current_step"] == "Publish Review"
+    assert rows[0]["next_step"] == "CMS Go-live"
 
 
 def test_record_live_idempotent_when_already_published(tmp_path, monkeypatch):
@@ -162,9 +163,12 @@ def test_record_live_idempotent_when_already_published(tmp_path, monkeypatch):
     monkeypatch.setattr(gl, "TRACKER_PATH", csv_path)
     monkeypatch.setattr(gl, "REPO_ROOT", root)
 
-    assert gl.record_live(["WA"], confirmed=True) == 0
+    before = fin.read_text(encoding="utf-8")
+    assert gl.record_live(["WA"], confirmed=True) == 3
+    assert fin.read_text(encoding="utf-8") == before
     rows = list(csv.DictReader(csv_path.open(encoding="utf-8")))
-    assert rows[0]["current_step"] == "Completed"
+    assert rows[0]["current_step"] == "Publish Review"
+    assert rows[0]["next_step"] == "CMS Go-live"
 
 
 def test_record_live_rejects_bad_publish_status(tmp_path, monkeypatch):
@@ -199,4 +203,8 @@ def test_record_live_rejects_bad_publish_status(tmp_path, monkeypatch):
     monkeypatch.setattr(gl, "TRACKER_PATH", csv_path)
     monkeypatch.setattr(gl, "REPO_ROOT", root)
 
-    assert gl.record_live(["WB"], confirmed=True) == 1
+    before = fin.read_text(encoding="utf-8")
+    assert gl.record_live(["WB"], confirmed=True) == 3
+    assert fin.read_text(encoding="utf-8") == before
+    rows = list(csv.DictReader(csv_path.open(encoding="utf-8")))
+    assert rows[0]["current_step"] == "Publish Review"

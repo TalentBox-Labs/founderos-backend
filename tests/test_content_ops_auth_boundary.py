@@ -1,9 +1,9 @@
 """Adversarial Content Ops auth boundary — HUMAN/SERVICE/ANONYMOUS.
 
-Content Ops storage remains GLOBAL_BY_DESIGN (filesystem tracker). This suite
-enforces CLASS H0 (HUMAN session) for browser Content Ops surfaces and
-fail-closed SERVICE auth for API-key consumers. It does NOT claim tenant
-isolation of Content Ops artifacts.
+Content artifacts have no organization column. Access uses the explicit
+single-organization beta lock: an authenticated human whose only membership
+is the server-bound beta organization. This suite does not claim per-row
+tenant isolation.
 
 Authority invariants preserved:
 - SERVICE never becomes HUMAN
@@ -23,6 +23,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import sessionmaker
 
 from revenue_os.auth import hash_password
+from revenue_os.services.content_ops_authority import CONTENT_OPS_BETA_ORGANIZATION_ENV
 from revenue_os.models.organization import (
     MembershipStatus,
     Organization,
@@ -39,6 +40,7 @@ _NAME = "Krishna Founder"
 
 CONTENT_OPS_HTML = (
     "/",
+    "/content-ops",
     "/weeks",
     "/content-studio",
     "/editorial",
@@ -80,7 +82,9 @@ def identity_db(monkeypatch: pytest.MonkeyPatch) -> sessionmaker:
 
 
 @pytest.fixture()
-def owner_creds(identity_db: sessionmaker) -> tuple[User, str, str]:
+def owner_creds(
+    identity_db: sessionmaker, monkeypatch: pytest.MonkeyPatch
+) -> tuple[User, str, str]:
     email = f"content-ops-auth-{uuid.uuid4().hex}@talentbox.invalid"
     db = identity_db()
     try:
@@ -107,6 +111,7 @@ def owner_creds(identity_db: sessionmaker) -> tuple[User, str, str]:
         db.commit()
         db.refresh(user)
         db.expunge(user)
+        monkeypatch.setenv(CONTENT_OPS_BETA_ORGANIZATION_ENV, str(org.id))
         return user, email, _PASSWORD
     finally:
         db.close()

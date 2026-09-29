@@ -26,7 +26,15 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
+
+from src.tools.publication_truth import (
+    TRUTH_REMOTE_WRITE_CONFIRMED,
+    TRUTH_UNKNOWN_REMOTE,
+    apply_provider_body_to_channel_status,
+    channel_rewrite_blocked,
+    mark_channel_remote_unknown,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -56,6 +64,60 @@ def _post_json(url: str, payload: dict, headers: dict) -> dict:
     except urllib.error.HTTPError as e:
         body = e.read().decode("utf-8", errors="replace")
         raise RuntimeError(f"HTTP {e.code} from {url}: {body}") from e
+
+
+def _write_status(path: Path, status: dict[str, Any]) -> None:
+    path.write_text(json.dumps(status, indent=2), encoding="utf-8")
+
+
+def _unknown_remote_result() -> dict[str, Any]:
+    return {
+        "ok": False,
+        "publication_truth": TRUTH_UNKNOWN_REMOTE,
+        "remote_write_outstanding": True,
+    }
+
+
+def _blocked_rewrite_result() -> dict[str, Any]:
+    return {
+        "skipped": True,
+        "reason": "unknown remote result; rewrite blocked",
+        "publication_truth": TRUTH_UNKNOWN_REMOTE,
+    }
+
+
+def _invoke_confirmed_channel(
+    status: dict[str, Any],
+    status_path: Path,
+    channel: str,
+    call: Callable[[], Any],
+    *,
+    confirmed: bool,
+    url_field: str | None = None,
+) -> dict[str, Any]:
+    """Run one provider call. Unknown transport failures do not schedule a rewrite."""
+    if channel_rewrite_blocked(status, channel):
+        return _blocked_rewrite_result()
+    published = status.get("published") or {}
+    if isinstance(published, dict) and published.get(channel):
+        return {"skipped": True, "reason": "already published"}
+    try:
+        result = call()
+    except urllib.error.URLError:
+        mark_channel_remote_unknown(status, channel)
+        _write_status(status_path, status)
+        return _unknown_remote_result()
+    if not isinstance(result, dict):
+        result = {"ok": False, "status": "FAILED", "message": "Provider returned a non-object"}
+    if confirmed:
+        truth = apply_provider_body_to_channel_status(status, channel, result)
+        if truth != TRUTH_REMOTE_WRITE_CONFIRMED:
+            # The request returned without a remote object id. Do not write again.
+            mark_channel_remote_unknown(status, channel)
+        elif url_field:
+            status[url_field] = result.get("url", "")
+        _write_status(status_path, status)
+    return result
 
 
 def _get_json(url: str, headers: dict) -> dict:
@@ -409,28 +471,30 @@ class SocialPublisher:
 
     def publish_blog(self, status_path: str, *, confirmed: bool = False) -> dict:
         status, sp = self._load_status(status_path)
-        if status.get("published", {}).get("hashnode"):
-            return {"skipped": True, "reason": "already published"}
         article_rel = status.get("artifacts", {}).get("02_Blog_Article.md", "")
-        result = self._blog().publish(article_rel, confirmed=confirmed)
-        if confirmed:
-            status.setdefault("published", {})["hashnode"] = True
-            status["hashnode_url"] = result.get("url", "")
-            sp.write_text(json.dumps(status, indent=2), encoding="utf-8")
-        return result
+        return _invoke_confirmed_channel(
+            status,
+            sp,
+            "hashnode",
+            lambda: self._blog().publish(article_rel, confirmed=confirmed),
+            confirmed=confirmed,
+            url_field="hashnode_url",
+        )
 
     def publish_linkedin(self, status_path: str, *, confirmed: bool = False) -> dict:
         status, sp = self._load_status(status_path)
-        if status.get("published", {}).get("linkedin"):
-            return {"skipped": True, "reason": "already published"}
         arts = status.get("artifacts", {})
         post_text = self._artifact_text(arts, "03_LinkedIn_Post.md")
         article_url = status.get("canonical_url", "") or status.get("hashnode_url", "")
-        result = self._li().publish(post_text, article_url=article_url, confirmed=confirmed)
-        if confirmed:
-            status.setdefault("published", {})["linkedin"] = True
-            sp.write_text(json.dumps(status, indent=2), encoding="utf-8")
-        return result
+        return _invoke_confirmed_channel(
+            status,
+            sp,
+            "linkedin",
+            lambda: self._li().publish(
+                post_text, article_url=article_url, confirmed=confirmed
+            ),
+            confirmed=confirmed,
+        )
 
     def publish_instagram(
         self,
@@ -440,18 +504,21 @@ class SocialPublisher:
         confirmed: bool = False,
     ) -> dict:
         status, sp = self._load_status(status_path)
-        if status.get("published", {}).get("instagram"):
-            return {"skipped": True, "reason": "already published"}
         arts = status.get("artifacts", {})
         caption_raw = self._artifact_text(arts, "04_Instagram_Post.md")
-        # Extract just the caption section
-        m = re.search(r"## Instagram Caption\s*\n(.*?)(?=\n## |\Z)", caption_raw, re.DOTALL)
-        caption = m.group(1).strip() if m else caption_raw[:2200]
-        result = self._ig().publish(caption=caption, image_url=image_url, confirmed=confirmed)
-        if confirmed:
-            status.setdefault("published", {})["instagram"] = True
-            sp.write_text(json.dumps(status, indent=2), encoding="utf-8")
-        return result
+        caption_match = re.search(
+            r"## Instagram Caption\s*\n(.*?)(?=\n## |\Z)", caption_raw, re.DOTALL
+        )
+        caption = caption_match.group(1).strip() if caption_match else caption_raw[:2200]
+        return _invoke_confirmed_channel(
+            status,
+            sp,
+            "instagram",
+            lambda: self._ig().publish(
+                caption=caption, image_url=image_url, confirmed=confirmed
+            ),
+            confirmed=confirmed,
+        )
 
     def publish_youtube_metadata(
         self,
@@ -460,26 +527,31 @@ class SocialPublisher:
         confirmed: bool = False,
     ) -> dict:
         status, sp = self._load_status(status_path)
-        if status.get("published", {}).get("youtube"):
-            return {"skipped": True, "reason": "already published"}
         arts = status.get("artifacts", {})
         yt_text = self._artifact_text(arts, "05_YouTube_Content.md")
-        # Extract title
-        title_m = re.search(r"## YouTube Titles\s*\n(.+?)(?:\n|$)", yt_text)
-        title = title_m.group(1).strip().lstrip("- ") if title_m else status.get("topic", "")
-        # Extract description
-        desc_m = re.search(r"## Description\s*\n(.*?)(?=\n## |\Z)", yt_text, re.DOTALL)
-        description = desc_m.group(1).strip() if desc_m else ""
-        # Extract tags
-        tags_m = re.search(r"## Tags\s*\n(.*?)(?=\n## |\Z)", yt_text, re.DOTALL)
-        tags = [t.strip().lstrip("- ") for t in (tags_m.group(1).splitlines() if tags_m else []) if t.strip()]
-        result = self._yt().create_video_metadata(
-            title=title, description=description, tags=tags, confirmed=confirmed
+        title_match = re.search(r"## YouTube Titles\s*\n(.+?)(?:\n|$)", yt_text)
+        title = (
+            title_match.group(1).strip().lstrip("- ")
+            if title_match
+            else status.get("topic", "")
         )
-        if confirmed:
-            status.setdefault("published", {})["youtube"] = True
-            sp.write_text(json.dumps(status, indent=2), encoding="utf-8")
-        return result
+        desc_match = re.search(r"## Description\s*\n(.*?)(?=\n## |\Z)", yt_text, re.DOTALL)
+        description = desc_match.group(1).strip() if desc_match else ""
+        tags_match = re.search(r"## Tags\s*\n(.*?)(?=\n## |\Z)", yt_text, re.DOTALL)
+        tags = [
+            tag.strip().lstrip("- ")
+            for tag in (tags_match.group(1).splitlines() if tags_match else [])
+            if tag.strip()
+        ]
+        return _invoke_confirmed_channel(
+            status,
+            sp,
+            "youtube",
+            lambda: self._yt().create_video_metadata(
+                title=title, description=description, tags=tags, confirmed=confirmed
+            ),
+            confirmed=confirmed,
+        )
 
     def publish_all(
         self,

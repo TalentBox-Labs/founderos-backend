@@ -10,8 +10,23 @@ from sqlalchemy.orm import Session
 
 from revenue_os.database import get_db
 from revenue_os.models.content import ContentLibrary, SocialPost
+from src.tools.publication_truth import local_claim_publication_truth
 
 router = APIRouter(prefix="/social", tags=["social"])
+
+
+def _reject_unproven_published_status(status: str | None) -> None:
+    """A status token is not a remote CMS write."""
+    if (status or "").strip().lower() != "published":
+        return
+    truth = local_claim_publication_truth(status)
+    raise HTTPException(
+        status_code=409,
+        detail=(
+            "Publication unproven. A status token cannot mark content published "
+            f"(publication_truth={truth})."
+        ),
+    )
 
 
 class SocialPostCreate(BaseModel):
@@ -123,6 +138,7 @@ def update_post(
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
     update_data = body.model_dump(exclude_unset=True)
+    _reject_unproven_published_status(update_data.get("status"))
     for key, value in update_data.items():
         if value is not None:
             setattr(post, key, value)
@@ -136,17 +152,14 @@ def publish_post(post_id: str, db: Session = Depends(get_db)):
     post = db.query(SocialPost).filter(SocialPost.id == post_id).first()
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
-    post.status = "published"
-    post.published_at = datetime.utcnow()
-    db.commit()
-    db.refresh(post)
-    return post
+    _reject_unproven_published_status("published")
 
 
 # ---- Content Library ----
 
 @router.post("/content", response_model=ContentResponse, status_code=201)
 def create_content(body: ContentCreate, db: Session = Depends(get_db)):
+    _reject_unproven_published_status(body.status)
     content = ContentLibrary(
         title=body.title,
         content_type=body.content_type,

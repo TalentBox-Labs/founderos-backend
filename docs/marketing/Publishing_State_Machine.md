@@ -1,5 +1,12 @@
 # Publishing State Machine — Baseline v1.0 (Frozen)
 
+**Status:** FROZEN for the orchestration state names.
+**Publication truth (P0):** `published` is remote-write acknowledgement only.
+Adapter `ok`, HTTP 200, `rendering_performed=false`, `external_http=false`,
+local or static files, and tracker or frontmatter text do not enter `published`.
+`verified` stays a later read-back. See
+`docs/operations/CONTENT_OPS_P0_LEGACY_PUBLICATION_RECONCILIATION.md`.
+
 **Status:** FROZEN  
 **Sprint:** M1.5  
 **Date:** 2026-08-09  
@@ -36,7 +43,7 @@ Published   Failed
 | `editorial_approved` | `STATE_EDITORIAL_APPROVED` | Prerequisite checkpoint (history only; not a durable job.state after create) |
 | `publish_pending` | `STATE_PUBLISH_PENDING` | Job created; awaiting manual publish |
 | `publishing` | `STATE_PUBLISHING` | Manual publish in progress (adapter invoked) |
-| `published` | `STATE_PUBLISHED` | Adapter returned ok |
+| `published` | `STATE_PUBLISHED` | Remote write acknowledgement only |
 | `failed` | `STATE_FAILED` | Adapter failed / NOT_IMPLEMENTED |
 | `retry` | `STATE_RETRY` | Marked for retry (then immediately re-enters publish) |
 | `cancelled` | `STATE_CANCELLED` | Cancelled by human |
