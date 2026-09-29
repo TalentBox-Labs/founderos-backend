@@ -121,20 +121,35 @@ def _integration_org_id(request: Request | None = None) -> str | None:
     return resolve_integration_org_id(request)
 
 
+def _reject_gmail_if_beta_frozen() -> None:
+    """Server-side beta deferment: UI hiding alone is insufficient."""
+    from revenue_os.services.gmail_beta_freeze import (
+        gmail_beta_frozen,
+        gmail_beta_frozen_detail,
+    )
+
+    if gmail_beta_frozen():
+        raise HTTPException(status_code=403, detail=gmail_beta_frozen_detail())
+
+
 @router.get("/connectors", tags=["integrations"])
 def list_connectors(_: str | None = Depends(_verify_api_key)) -> dict[str, Any]:
     """Every integration the platform knows about, merged with live status.
 
     Never returns secret values — only whether each connector is configured.
+    When Gmail is beta-frozen, the gmail connector is omitted from the list.
     """
     from revenue_os.services.credentials_vault import list_configured_connectors
-
     from revenue_os.services.credentials_vault import load_credentials
+    from revenue_os.services.gmail_beta_freeze import gmail_beta_enabled
 
     org_id = _integration_org_id()
     vaulted = list_configured_connectors(organization_id=org_id)
+    gmail_enabled = gmail_beta_enabled()
     result = []
     for c in CONNECTOR_CATALOG:
+        if c["name"] == "gmail" and not gmail_enabled:
+            continue
         if c["source"] == "vault":
             entry = vaulted.get(c["name"])
             configured = entry is not None
@@ -158,7 +173,12 @@ def list_connectors(_: str | None = Depends(_verify_api_key)) -> dict[str, Any]:
             "fields": c.get("fields", []), "env_vars": c.get("env_vars", []),
             "oauth": bool(c.get("oauth")), "connected": connected,
         })
-    return {"ok": True, "count": len(result), "connectors": result}
+    return {
+        "ok": True,
+        "count": len(result),
+        "connectors": result,
+        "gmail_beta_enabled": gmail_enabled,
+    }
 
 
 @router.post("/connectors/{connector_name}/configure", tags=["integrations"])
@@ -171,6 +191,8 @@ def configure_connector(
     catalog_entry = next((c for c in CONNECTOR_CATALOG if c["name"] == connector_name), None)
     if catalog_entry is None:
         raise HTTPException(status_code=404, detail="Unknown connector")
+    if connector_name == "gmail":
+        _reject_gmail_if_beta_frozen()
     if catalog_entry["source"] != "vault":
         raise HTTPException(
             status_code=400,
@@ -204,6 +226,9 @@ def remove_connector_credentials(
 ) -> dict[str, Any]:
     """Remove a connector's stored credentials."""
     from revenue_os.services.credentials_vault import delete_credentials
+
+    if connector_name == "gmail":
+        _reject_gmail_if_beta_frozen()
 
     org_id = _integration_org_id()
     deleted = delete_credentials(connector_name, organization_id=org_id)
@@ -684,6 +709,8 @@ def gmail_authorize(
     - Browser document navigation → 302 redirect to Google (clean state).
     - XHR/fetch/API clients → JSON ``authorize_url`` for programmatic open.
     """
+    _reject_gmail_if_beta_frozen()
+
     from revenue_os.integrations.gmail_sync import build_authorize_url
     from revenue_os.services.credentials_vault import load_credentials
 
@@ -753,6 +780,18 @@ def gmail_callback(
     )
     emit_gmail_callback_diagnostics(diag)
 
+    from revenue_os.services.gmail_beta_freeze import (
+        gmail_beta_frozen,
+        gmail_beta_frozen_detail,
+    )
+
+    if gmail_beta_frozen():
+        # Route retained (PR #36 diagnostics/authority path intact); no mutation.
+        emit_gmail_callback_diagnostics(
+            {**diag, "failure_stage": "POST_AUTHORITY_FAILURE"}
+        )
+        return _page(gmail_beta_frozen_detail(), ok=False)
+
     if error:
         return _page(f"Gmail connection failed: {error}", ok=False)
     if not code:
@@ -797,6 +836,8 @@ def gmail_callback(
 @router.post("/gmail/sync", tags=["integrations"])
 def gmail_sync_now(_: str | None = Depends(_verify_api_key)) -> dict[str, Any]:
     """Manually trigger Gmail inbox sync for the authenticated organization only."""
+    _reject_gmail_if_beta_frozen()
+
     from revenue_os.integrations.gmail_sync import sync_inbox
 
     org_id = _integration_org_id()

@@ -32,6 +32,8 @@ services:
         value: "0"
       - key: N8N_BRIDGE_ENABLED
         value: "0"
+      - key: FOUNDER_OS_GMAIL_BETA_ENABLED
+        value: "0"
       - key: FOUNDER_OS_COOKIE_SECURE
         value: "true"
       - key: FOUNDER_OS_REQUIRE_LOGIN
