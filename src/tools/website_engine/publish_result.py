@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from src.tools.publication_truth import TRUTH_UNPROVEN
+
 CHANNEL_WEBSITE = "website"
 OWNER_ENGINE = "Website Engine"
 
@@ -24,6 +26,10 @@ class WebsitePublishResult:
     website_engine_invoked: bool = True
     rendering_performed: bool = False
     external_api_called: bool = False
+    external_http: bool = False
+    remote_write_acknowledged: bool = False
+    remote_object_id: str = ""
+    publication_truth: str = TRUTH_UNPROVEN
     slug: str = ""
     canonical_url: str = ""
     content_id: str = ""
@@ -42,6 +48,10 @@ class WebsitePublishResult:
             "website_engine_invoked": self.website_engine_invoked,
             "rendering_performed": self.rendering_performed,
             "external_api_called": self.external_api_called,
+            "external_http": self.external_http,
+            "remote_write_acknowledged": self.remote_write_acknowledged,
+            "remote_object_id": self.remote_object_id,
+            "publication_truth": self.publication_truth,
         }
         if self.slug:
             result["slug"] = self.slug
@@ -77,6 +87,10 @@ def success_result(
         website_engine_invoked=True,
         rendering_performed=rendering_performed,
         external_api_called=False,
+        external_http=False,
+        remote_write_acknowledged=False,
+        remote_object_id="",
+        publication_truth=TRUTH_UNPROVEN,
         slug=slug,
         canonical_url=canonical_url,
         content_id=content_id,
@@ -99,6 +113,10 @@ def failure_result(
         website_engine_invoked=True,
         rendering_performed=False,
         external_api_called=False,
+        external_http=False,
+        remote_write_acknowledged=False,
+        remote_object_id="",
+        publication_truth=TRUTH_UNPROVEN,
         content_id=content_id,
         details=details or {},
     )

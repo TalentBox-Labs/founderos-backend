@@ -1,8 +1,7 @@
-"""CMS go-live helpers: print publish checklist; record live URL state in repo.
+"""CMS go-live helpers: print the publish checklist.
 
-Does not call external CMS APIs — operators (or n8n) publish elsewhere, then record
-truth here with ``record-live --i-confirmed-url-live``. Optional Hashnode publish:
-``python -m src.tools.hashnode_publish``.
+``record-live`` does not stamp ``published``. Browser confirmation is not a
+remote CMS receipt. Existing files stay as they are.
 """
 
 from __future__ import annotations
@@ -103,6 +102,11 @@ def print_checklist() -> int:
 
 
 def record_live(content_ids: list[str], *, confirmed: bool) -> int:
+    """Refuse to stamp published from a browser confirmation.
+
+    Existing finals and tracker rows are left unchanged. A human looking at a
+    URL is not a CMS write receipt.
+    """
     if not confirmed:
         print(
             "Refusing to record live state without --i-confirmed-url-live "
@@ -113,67 +117,12 @@ def record_live(content_ids: list[str], *, confirmed: bool) -> int:
     if not content_ids:
         print("No content_id values given.", file=sys.stderr)
         return 2
-
-    fieldnames, rows = _read_tracker_rows()
-    want = {c.strip().upper() for c in content_ids if c.strip()}
-
-    row_by_id: dict[str, dict[str, str]] = {}
-    for row in rows:
-        cid = (row.get("content_id") or "").strip().upper()
-        if cid in want:
-            row_by_id[cid] = row
-
-    missing_ids = want - row_by_id.keys()
-    if missing_ids:
-        print(f"ERROR: content_id not in tracker: {sorted(missing_ids)}", file=sys.stderr)
-        return 1
-
-    file_writes: list[tuple[str, Path, str]] = []
-
-    for cid in sorted(want):
-        row = row_by_id[cid]
-        fp = _final_path_for_row(row)
-        if not fp.is_file():
-            print(f"ERROR: missing final file for {cid}: {fp}", file=sys.stderr)
-            return 1
-        text = fp.read_text(encoding="utf-8")
-        fm, body = _parse_front_matter(text)
-        ps = str(fm.get("publish_status", "")).strip().lower()
-        if ps not in ("ready", "published"):
-            print(
-                f"ERROR: {cid}: publish_status must be Ready or published "
-                f"(got {fm.get('publish_status')!r})",
-                file=sys.stderr,
-            )
-            return 1
-        if ps == "ready":
-            fm2 = dict(fm)
-            fm2["publish_status"] = "published"
-            file_writes.append((cid, fp, _compose_final(fm2, body)))
-
-    for cid, fp, new_text in file_writes:
-        fp.write_text(new_text, encoding="utf-8")
-        print(f"{cid}: updated {fp.relative_to(REPO_ROOT)} publish_status → published")
-
-    for cid in sorted(want):
-        row = row_by_id[cid]
-        fp = _final_path_for_row(row)
-        fm, _ = _parse_front_matter(fp.read_text(encoding="utf-8"))
-        ps = str(fm.get("publish_status", "")).strip().lower()
-        if ps != "published":
-            print(f"ERROR: {cid}: expected publish_status published after update", file=sys.stderr)
-            return 1
-        row["current_step"] = "Completed"
-        row["next_step"] = "None"
-
-    with TRACKER_PATH.open("w", encoding="utf-8", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=fieldnames)
-        w.writeheader()
-        w.writerows(rows)
-
-    for cid in sorted(want):
-        print(f"{cid}: tracker → current_step=Completed, next_step=None")
-    return 0
+    print(
+        "Refusing to mark content published. Browser confirmation is not "
+        "remote write proof. Existing files were left unchanged.",
+        file=sys.stderr,
+    )
+    return 3
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -182,7 +131,10 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("print-checklist", help="Markdown table for rows awaiting CMS go-live")
 
-    rp = sub.add_parser("record-live", help="Mark week(s) published in repo after URL is live")
+    rp = sub.add_parser(
+        "record-live",
+        help="Refuse to stamp published without a remote write receipt",
+    )
     rp.add_argument("content_ids", nargs="+", help="e.g. W01 W03")
     rp.add_argument(
         "--i-confirmed-url-live",

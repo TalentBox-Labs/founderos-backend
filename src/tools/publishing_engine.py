@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from src.tools import editorial_approval as ea
+from src.tools import publication_truth as publication_truth
 from src.tools.runtime_paths import REPO_ROOT
 
 SCHEMA_VERSION = 1
@@ -289,7 +290,7 @@ def validate_publish_readiness(content_id: str) -> dict[str, Any]:
 
 
 def _adapter_website(job: dict[str, Any]) -> dict[str, Any]:
-    """Website channel placeholder — does NOT render or deploy (Website Engine)."""
+    """Website channel placeholder — does not render, deploy, or prove publication."""
     return {
         "ok": True,
         "status": "PLACEHOLDER",
@@ -302,6 +303,10 @@ def _adapter_website(job: dict[str, Any]) -> dict[str, Any]:
         ),
         "website_engine_invoked": False,
         "rendering_performed": False,
+        "external_http": False,
+        "remote_write_acknowledged": False,
+        "remote_object_id": "",
+        "publication_truth": publication_truth.TRUTH_UNPROVEN,
     }
 
 
@@ -382,6 +387,9 @@ def create_publish_job(
         "editorial_phase": readiness.get("editorial_phase"),
         "bundle": readiness.get("bundle"),
         "adapter_result": None,
+        "publication_truth": publication_truth.TRUTH_UNPROVEN,
+        "verification_status": publication_truth.TRUTH_UNPROVEN,
+        "remote_write_outstanding": False,
         "cancelled": False,
         "orchestration_only": True,
         "website_engine": False,
@@ -444,6 +452,79 @@ def _transition(
     return job
 
 
+def _refuse_unknown_remote_rewrite(job: dict[str, Any]) -> None:
+    """A dispatched remote call with no acknowledgement must not be written again."""
+    outstanding = job.get("remote_write_outstanding") is True
+    unknown = job.get("publication_truth") == publication_truth.TRUTH_UNKNOWN_REMOTE
+    if outstanding or unknown:
+        raise ValueError(
+            "Remote result is unknown. Refusing another publication write "
+            "until reconciliation."
+        )
+
+
+def _apply_adapter_result(
+    job: dict[str, Any],
+    result: dict[str, Any],
+    *,
+    requested_by: str,
+    notes: str,
+) -> dict[str, Any]:
+    truth = publication_truth.classify_adapter_result(result)
+    job["publication_truth"] = truth
+    if truth == publication_truth.TRUTH_REMOTE_WRITE_CONFIRMED:
+        job["verification_status"] = publication_truth.TRUTH_VERIFICATION_PENDING
+        job["remote_write_outstanding"] = False
+        job["remote_object_id"] = str(result.get("remote_object_id") or "").strip()
+        return _transition(
+            job,
+            STATE_PUBLISHED,
+            requested_by=requested_by,
+            errors=[],
+            notes=notes or "Remote write acknowledged. Verification is still pending.",
+            adapter_result=result,
+        )
+    if truth == publication_truth.TRUTH_UNKNOWN_REMOTE:
+        job["verification_status"] = publication_truth.TRUTH_UNKNOWN_REMOTE
+        job["remote_write_outstanding"] = True
+        return _transition(
+            job,
+            STATE_FAILED,
+            requested_by=requested_by,
+            errors=[
+                "Remote publication result is unknown. "
+                "Another write is blocked until reconciliation."
+            ],
+            notes=notes or "Remote outcome unknown",
+            adapter_result=result,
+        )
+    if truth == publication_truth.TRUTH_UNPROVEN:
+        job["verification_status"] = publication_truth.TRUTH_UNPROVEN
+        job["remote_write_outstanding"] = False
+        return _transition(
+            job,
+            STATE_FAILED,
+            requested_by=requested_by,
+            errors=[
+                "Publication unproven. Adapter success, HTTP status, "
+                "local writes, and rendering flags are not remote publication."
+            ],
+            notes=notes or "Publication unproven",
+            adapter_result=result,
+        )
+    job["verification_status"] = publication_truth.TRUTH_FAILED
+    job["remote_write_outstanding"] = False
+    err = str(result.get("message") or result.get("status") or "Publish failed")
+    return _transition(
+        job,
+        STATE_FAILED,
+        requested_by=requested_by,
+        errors=[err],
+        notes=notes or err,
+        adapter_result=result,
+    )
+
+
 def manual_publish(job_id: str, *, requested_by: str, notes: str = "") -> dict[str, Any]:
     """Manual publish command — no scheduling, Celery, or AI."""
     if not is_human_requester(requested_by):
@@ -453,6 +534,7 @@ def manual_publish(job_id: str, *, requested_by: str, notes: str = "") -> dict[s
     job = get_job(job_id)
     if job is None:
         raise FileNotFoundError(f"Publish job not found: {job_id}")
+    _refuse_unknown_remote_rewrite(job)
 
     state = job.get("state")
     if state == STATE_CANCELLED:
@@ -487,23 +569,17 @@ def manual_publish(job_id: str, *, requested_by: str, notes: str = "") -> dict[s
         )
 
     result = adapter(job)
-    if result.get("ok"):
-        return _transition(
-            job,
-            STATE_PUBLISHED,
-            requested_by=requested_by.strip(),
-            errors=[],
-            notes=notes or result.get("message") or "Published (orchestration)",
-            adapter_result=result,
-        )
-    err = str(result.get("message") or result.get("status") or "Publish failed")
-    return _transition(
+    if not isinstance(result, dict):
+        result = {
+            "ok": False,
+            "status": "FAILED",
+            "message": "Adapter returned a non-object result",
+        }
+    return _apply_adapter_result(
         job,
-        STATE_FAILED,
+        result,
         requested_by=requested_by.strip(),
-        errors=[err],
-        notes=notes or err,
-        adapter_result=result,
+        notes=notes or "",
     )
 
 
@@ -513,6 +589,7 @@ def retry_job(job_id: str, *, requested_by: str, notes: str = "") -> dict[str, A
     job = get_job(job_id)
     if job is None:
         raise FileNotFoundError(f"Publish job not found: {job_id}")
+    _refuse_unknown_remote_rewrite(job)
     state = job.get("state")
     if state not in {STATE_FAILED, STATE_RETRY}:
         raise ValueError(f"Invalid transition: cannot retry from state {state!r}")
