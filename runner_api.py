@@ -89,6 +89,7 @@ from runner_api_routers.seo import router as seo_router
 from runner_api_routers.knowledge_base import router as knowledge_base_router
 from runner_api_routers.analytics_depth import router as analytics_depth_router
 from runner_api_routers.content_studio import router as content_studio_router
+from runner_api_routers.content_ops import router as content_ops_router
 from runner_api_routers.editorial import router as editorial_router
 from runner_api_routers.publishing import router as publishing_router
 from runner_api_routers.marketing_agents import router as marketing_agents_router
@@ -273,6 +274,7 @@ app.include_router(seo_router)
 app.include_router(knowledge_base_router)
 app.include_router(analytics_depth_router)
 app.include_router(content_studio_router)
+app.include_router(content_ops_router)
 app.include_router(editorial_router)
 app.include_router(publishing_router)
 app.include_router(cockpit_router)
