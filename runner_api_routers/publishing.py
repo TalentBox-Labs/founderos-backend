@@ -8,9 +8,10 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from revenue_os.services.content_ops_authority import content_ops_human_actor
 from runner_api_routers.utils import require_human_or_api_key
 from src.tools import publishing_engine as pe
 
@@ -77,6 +78,7 @@ def list_publishing_jobs(
 @router.post("/jobs", tags=["publishing"])
 def create_publishing_job(
     body: CreatePublishJobRequest,
+    request: Request,
     _: str | None = Depends(require_human_or_api_key),
 ) -> dict[str, Any]:
     """Create a publish job for an editorially approved bundle."""
@@ -84,11 +86,12 @@ def create_publishing_job(
         "Publishing job create",
         extra={"content_id": body.content_id, "channel": body.channel},
     )
+    actor = content_ops_human_actor(request, body.requested_by)
     try:
         job = pe.create_publish_job(
             content_id=body.content_id,
             channel=body.channel,
-            requested_by=body.requested_by,
+            requested_by=actor,
             notes=body.notes or "",
         )
     except PermissionError as exc:
@@ -116,14 +119,16 @@ def get_publishing_job(
 def post_publishing_publish(
     job_id: str,
     body: PublishActionRequest,
+    request: Request,
     _: str | None = Depends(require_human_or_api_key),
 ) -> dict[str, Any]:
     """Manual publish command (no scheduling / Celery / AI)."""
     logger.info("Publishing manual publish", extra={"job_id": job_id})
+    actor = content_ops_human_actor(request, body.requested_by)
     try:
         job = pe.manual_publish(
             job_id,
-            requested_by=body.requested_by,
+            requested_by=actor,
             notes=body.notes or "",
         )
     except PermissionError as exc:
@@ -141,14 +146,16 @@ def post_publishing_publish(
 def post_publishing_retry(
     job_id: str,
     body: PublishActionRequest,
+    request: Request,
     _: str | None = Depends(require_human_or_api_key),
 ) -> dict[str, Any]:
     """Retry a failed publish job (manual)."""
     logger.info("Publishing retry", extra={"job_id": job_id})
+    actor = content_ops_human_actor(request, body.requested_by)
     try:
         job = pe.retry_job(
             job_id,
-            requested_by=body.requested_by,
+            requested_by=actor,
             notes=body.notes or "",
         )
     except PermissionError as exc:
@@ -164,14 +171,16 @@ def post_publishing_retry(
 def post_publishing_cancel(
     job_id: str,
     body: PublishActionRequest,
+    request: Request,
     _: str | None = Depends(require_human_or_api_key),
 ) -> dict[str, Any]:
     """Cancel a pending/failed/retry job."""
     logger.info("Publishing cancel", extra={"job_id": job_id})
+    actor = content_ops_human_actor(request, body.requested_by)
     try:
         job = pe.cancel_job(
             job_id,
-            requested_by=body.requested_by,
+            requested_by=actor,
             notes=body.notes or "",
         )
     except PermissionError as exc:

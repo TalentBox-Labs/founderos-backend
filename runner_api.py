@@ -1265,7 +1265,7 @@ def orchestration_run_proxy(
 @app.post("/marketing/generate")
 def marketing_generate(
     req: MarketingRequest,
-    _: str | None = Depends(_verify_api_key),
+    _: str | None = Depends(require_human_or_api_key),
 ) -> dict:
     """Generate multi-channel marketing content via CrewAI agents."""
     if not req.topic or not req.keyword:
@@ -1288,7 +1288,7 @@ def marketing_generate(
 @app.post("/marketing/dry-run")
 def marketing_dry_run(
     req: MarketingRequest,
-    _: str | None = Depends(_verify_api_key),
+    _: str | None = Depends(require_human_or_api_key),
 ) -> dict:
     """Preview what publish_all would post without hitting any APIs."""
     if not req.status_path:
@@ -1303,7 +1303,7 @@ def marketing_dry_run(
 @app.post("/marketing/publish")
 def marketing_publish(
     req: MarketingRequest,
-    _: str | None = Depends(_verify_api_key),
+    _: str | None = Depends(require_human_or_api_key),
 ) -> dict:
     """Publish to all configured social channels. Requires confirmed=True."""
     if not req.status_path:
