@@ -351,7 +351,21 @@ def job_sync_gmail_inbox() -> dict[str, Any]:
     """Pull Gmail inbox; match contacts only within authorized organizations.
 
     ACP-3: per-org sync is a governed WorkItem (Activity writes are org-scoped).
+    Beta freeze: isolate this job only — do not disable the full heartbeat.
     """
+    from revenue_os.services.gmail_beta_freeze import (
+        gmail_beta_frozen,
+        gmail_beta_frozen_detail,
+    )
+
+    if gmail_beta_frozen():
+        return {
+            "ok": False,
+            "reason": gmail_beta_frozen_detail(),
+            "gmail_beta_enabled": False,
+            "executed": False,
+        }
+
     from revenue_os.integrations.gmail_sync import sync_inbox
     from revenue_os.services.acp2_work_contract import WORK_GMAIL_INBOUND, WorkState
     from revenue_os.services.acp3_durable_runtime import gate_new_mutating_work
@@ -718,6 +732,8 @@ def initialize_heartbeat() -> HeartbeatScheduler:
         "hermes_goal_check", job_hermes_goal_check,
         _env_int("HEARTBEAT_GOAL_CHECK_SEC", 3600),
     )
+    # Always register so operators can inspect the job; execution is gated by
+    # FOUNDER_OS_GMAIL_BETA_ENABLED (default frozen) inside job_sync_gmail_inbox.
     scheduler.register(
         "sync_gmail_inbox", job_sync_gmail_inbox,
         _env_int("HEARTBEAT_GMAIL_SYNC_SEC", 900),

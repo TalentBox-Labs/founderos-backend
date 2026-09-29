@@ -41,6 +41,12 @@ _ORG_B = uuid.UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
 _OPERATOR = "Krishna Founder"
 
 
+
+@pytest.fixture(autouse=True)
+def _enable_gmail_beta_for_operational_suite(monkeypatch):
+    """Operational Gmail suites re-enable Gmail; beta default is frozen."""
+    monkeypatch.setenv("FOUNDER_OS_GMAIL_BETA_ENABLED", "1")
+
 @pytest.fixture(autouse=True)
 def _reset_identity() -> None:
     identity_mod._revoked_jtis.clear()
