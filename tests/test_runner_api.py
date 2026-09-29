@@ -3,22 +3,38 @@
 from __future__ import annotations
 
 import subprocess
+import uuid
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+from sqlalchemy.orm import sessionmaker
 
 pytest.importorskip("fastapi")
 
 from fastapi.testclient import TestClient
 
+import revenue_os.services.tenant_resolution as tenant_resolution_mod
+import runner_api_routers.identity as identity_mod
+from revenue_os.auth import hash_password
+from revenue_os.database import engine
+from revenue_os.models.organization import (
+    MembershipStatus,
+    Organization,
+    OrganizationMembership,
+    OrganizationStatus,
+)
+from revenue_os.models.user import User
+from revenue_os.services.content_ops_authority import CONTENT_OPS_BETA_ORGANIZATION_ENV
 from runner_api import app
+from runner_api_routers.utils import _verify_api_key, require_human_or_api_key
+
+_PIPELINE_PASSWORD = "RunPipelineExpectation1!"
+_PIPELINE_HUMAN = "Pipeline Reviewer"
 
 
 @pytest.fixture
 def client() -> TestClient:
-    from runner_api_routers.utils import _verify_api_key, require_human_or_api_key
-
     async def _ok(request=None, credentials=None):
         return "test-key"
 
@@ -126,28 +142,108 @@ def test_run_pipeline_stops_when_runtime_apply_fails(client: TestClient) -> None
     assert body["steps"][0]["returncode"] == 1
 
 
+def _pipeline_identity_db(monkeypatch: pytest.MonkeyPatch) -> sessionmaker:
+    session_factory = sessionmaker(bind=engine)
+    monkeypatch.setattr(identity_mod, "SessionLocal", session_factory)
+    monkeypatch.setattr(tenant_resolution_mod, "SessionLocal", session_factory)
+    return session_factory
+
+
+def _pipeline_user(db, *, name: str) -> tuple[User, str]:
+    email = f"pipeline-{uuid.uuid4().hex}@talentbox.invalid"
+    user = User(
+        email=email,
+        hashed_password=hash_password(_PIPELINE_PASSWORD),
+        full_name=name,
+        role="owner",
+        is_active=1,
+    )
+    db.add(user)
+    db.flush()
+    return user, email
+
+
+def _login_pipeline_human(client: TestClient, email: str) -> None:
+    response = client.post(
+        "/api/v1/identity/login",
+        json={"email": email, "password": _PIPELINE_PASSWORD},
+    )
+    assert response.status_code == 200, response.text
+
+
 @pytest.mark.real_api_auth
-def test_run_pipeline_requires_bearer_when_env_set(
+def test_run_pipeline_requires_human_beta_member(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from runner_api_routers.utils import _verify_api_key, require_human_or_api_key
+    """Legacy pipeline mutation stays human-beta-tenant only.
 
+    A RUNNER_API_KEY bearer authenticates SERVICE. It does not become HUMAN,
+    including when the body carries a human-looking name.
+    """
     app.dependency_overrides.pop(_verify_api_key, None)
     app.dependency_overrides.pop(require_human_or_api_key, None)
     monkeypatch.setenv("RUNNER_API_KEY", "test-secret-token")
+    session_factory = _pipeline_identity_db(monkeypatch)
+    db = session_factory()
+    try:
+        org = Organization(
+            name="Pipeline Beta",
+            slug=f"pipeline-beta-{uuid.uuid4().hex[:8]}",
+            status=OrganizationStatus.ACTIVE,
+        )
+        db.add(org)
+        db.flush()
+        _outsider, outsider_email = _pipeline_user(db, name=_PIPELINE_HUMAN)
+        member, member_email = _pipeline_user(db, name=_PIPELINE_HUMAN)
+        db.add(
+            OrganizationMembership(
+                user_id=member.id,
+                organization_id=org.id,
+                role="owner",
+                status=MembershipStatus.ACTIVE,
+            )
+        )
+        db.commit()
+        beta_id = str(org.id)
+    finally:
+        db.close()
+    monkeypatch.setenv(CONTENT_OPS_BETA_ORGANIZATION_ENV, beta_id)
+
     client = TestClient(app)
-    r = client.post("/run-pipeline", json={})
-    assert r.status_code == 401
+    anonymous = client.post("/run-pipeline", json={})
+    assert anonymous.status_code == 401
 
     ok = MagicMock()
     ok.returncode = 0
     ok.stdout = ""
     ok.stderr = ""
-    with patch("runner_api_routers.pipeline._run", return_value=ok):
-        r2 = client.post(
+    service_headers = {"Authorization": "Bearer test-secret-token"}
+    human_looking = {
+        "topic": _PIPELINE_HUMAN,
+        "requested_by": _PIPELINE_HUMAN,
+        "approver": _PIPELINE_HUMAN,
+    }
+    with patch("runner_api_routers.pipeline._run", return_value=ok) as run:
+        service = client.post("/run-pipeline", json={}, headers=service_headers)
+        named = client.post(
             "/run-pipeline",
-            json={},
-            headers={"Authorization": "Bearer test-secret-token"},
+            json=human_looking,
+            headers=service_headers,
         )
-    assert r2.status_code == 200
-    assert r2.json()["status"] == "ok"
+        assert run.call_count == 0
+
+        client.cookies.clear()
+        _login_pipeline_human(client, outsider_email)
+        non_member = client.post("/run-pipeline", json={})
+        assert run.call_count == 0
+
+        client.cookies.clear()
+        _login_pipeline_human(client, member_email)
+        member_response = client.post("/run-pipeline", json={})
+
+    assert service.status_code == 403
+    assert named.status_code == 403
+    assert non_member.status_code == 403
+    assert member_response.status_code == 200
+    assert member_response.json()["status"] == "ok"
+    assert run.call_count == 1
