@@ -13,6 +13,11 @@ from src.tools import editorial_approval as ea
 from src.tools import publishing_engine as pe
 
 
+def _create_job(**kwargs: Any) -> dict[str, Any]:
+    kwargs.setdefault("tenant_id", "tenant-a")
+    return pe.create_publish_job(**kwargs)
+
+
 def _seed_editorial_approve(
     decisions_dir: Path, content_id: str = "W99", phase: str = "2b"
 ) -> None:
@@ -58,7 +63,7 @@ def publishing_env(
 
 class TestPublishingEngineCore:
     def test_create_job_and_queue(self, publishing_env: dict[str, Any]) -> None:
-        job = pe.create_publish_job(
+        job = _create_job(
             content_id="W99",
             channel="website",
             requested_by="Krishna Founder",
@@ -75,7 +80,7 @@ class TestPublishingEngineCore:
         self, publishing_env: dict[str, Any]
     ) -> None:
         with pytest.raises(LookupError, match="editorially approved"):
-            pe.create_publish_job(
+            _create_job(
                 content_id="W01",
                 channel="website",
                 requested_by="Human A",
@@ -84,7 +89,7 @@ class TestPublishingEngineCore:
     def test_status_transitions_website_placeholder(
         self, publishing_env: dict[str, Any]
     ) -> None:
-        job = pe.create_publish_job(
+        job = _create_job(
             content_id="W99",
             channel="website",
             requested_by="Human A",
@@ -101,7 +106,7 @@ class TestPublishingEngineCore:
     def test_social_channel_not_implemented(
         self, publishing_env: dict[str, Any]
     ) -> None:
-        job = pe.create_publish_job(
+        job = _create_job(
             content_id="W99",
             channel="linkedin",
             requested_by="Human A",
@@ -112,7 +117,7 @@ class TestPublishingEngineCore:
         assert result["adapter_result"]["external_api_called"] is False
 
     def test_audit_fields(self, publishing_env: dict[str, Any]) -> None:
-        job = pe.create_publish_job(
+        job = _create_job(
             content_id="W99",
             channel="website",
             requested_by="Auditor",
@@ -134,7 +139,7 @@ class TestPublishingEngineCore:
                 assert key in row
 
     def test_retry_from_failed(self, publishing_env: dict[str, Any]) -> None:
-        job = pe.create_publish_job(
+        job = _create_job(
             content_id="W99",
             channel="twitter",
             requested_by="Human A",
@@ -146,7 +151,7 @@ class TestPublishingEngineCore:
         assert "retry" in [h["state"] for h in retried["state_history"]]
 
     def test_cancel(self, publishing_env: dict[str, Any]) -> None:
-        job = pe.create_publish_job(
+        job = _create_job(
             content_id="W99",
             channel="website",
             requested_by="Human A",
@@ -158,7 +163,7 @@ class TestPublishingEngineCore:
 
     def test_permissions_ai_blocked(self, publishing_env: dict[str, Any]) -> None:
         with pytest.raises(PermissionError):
-            pe.create_publish_job(
+            _create_job(
                 content_id="W99",
                 channel="website",
                 requested_by="AI",
@@ -166,7 +171,7 @@ class TestPublishingEngineCore:
 
     def test_invalid_channel(self, publishing_env: dict[str, Any]) -> None:
         with pytest.raises(ValueError, match="Unknown channel"):
-            pe.create_publish_job(
+            _create_job(
                 content_id="W99",
                 channel="tiktok",
                 requested_by="Human A",
@@ -175,7 +180,7 @@ class TestPublishingEngineCore:
     def test_duplicate_publish_requires_remote_proof(
         self, publishing_env: dict[str, Any], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        job = pe.create_publish_job(
+        job = _create_job(
             content_id="W99",
             channel="website",
             requested_by="Human A",
@@ -196,7 +201,7 @@ class TestPublishingEngineCore:
             }
 
         monkeypatch.setitem(pe.ADAPTERS, "website", _remote_ack)
-        fresh = pe.create_publish_job(
+        fresh = _create_job(
             content_id="W99",
             channel="website",
             requested_by="Human A",
@@ -247,7 +252,7 @@ class TestPublishingAPI:
     def test_api_retry_cancel_permissions(
         self, cms_client: TestClient, publishing_env: dict[str, Any]
     ) -> None:
-        job = pe.create_publish_job(
+        job = _create_job(
             content_id="W99",
             channel="instagram",
             requested_by="Human A",
@@ -266,7 +271,7 @@ class TestPublishingAPI:
         )
         assert ok.status_code == 200
 
-        pending = pe.create_publish_job(
+        pending = _create_job(
             content_id="W99",
             channel="newsletter",
             requested_by="Human A",
@@ -343,7 +348,7 @@ class TestPublishingUI:
     def test_queue_page(
         self, cms_client: TestClient, publishing_env: dict[str, Any]
     ) -> None:
-        pe.create_publish_job(
+        _create_job(
             content_id="W99",
             channel="website",
             requested_by="Human A",
@@ -356,7 +361,7 @@ class TestPublishingUI:
     def test_detail_page(
         self, cms_client: TestClient, publishing_env: dict[str, Any]
     ) -> None:
-        job = pe.create_publish_job(
+        job = _create_job(
             content_id="W99",
             channel="website",
             requested_by="Human A",

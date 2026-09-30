@@ -12,6 +12,7 @@ import json
 from typing import Any
 from urllib.parse import urlparse
 
+from src.tools.content_ops_readiness import autonomous_publication_ready
 from src.ui.content_ops_beta.contract import (
     ACTION_CATALOG,
     DECISION_ACTION_IDS,
@@ -68,6 +69,8 @@ def present_content_ops_read(raw: dict[str, Any]) -> dict[str, Any]:
         "mock_banner": source == "mock" or not live,
         "week_id": "",
         "publication_job_id": "",
+        "readiness_surface": "content_review_internal_beta",
+        "autonomous_publication_ready": autonomous_publication_ready(),
         "empty_reason": "",
         "empty_title": "No active week",
         "empty_message": _EMPTY_COPY["no_current_week"][1],
