@@ -79,9 +79,13 @@ def list_publishing_jobs(
 def create_publishing_job(
     body: CreatePublishJobRequest,
     request: Request,
-    _: str | None = Depends(require_human_or_api_key),
+    organization_id: str = Depends(require_human_or_api_key),
 ) -> dict[str, Any]:
-    """Create a publish job for an editorially approved bundle."""
+    """Create a publish job for an editorially approved bundle.
+
+    Tenant scope is the dependency result. Body, query, and header
+    organization fields are not read.
+    """
     logger.info(
         "Publishing job create",
         extra={"content_id": body.content_id, "channel": body.channel},
@@ -92,6 +96,7 @@ def create_publishing_job(
             content_id=body.content_id,
             channel=body.channel,
             requested_by=actor,
+            tenant_id=organization_id,
             notes=body.notes or "",
         )
     except PermissionError as exc:

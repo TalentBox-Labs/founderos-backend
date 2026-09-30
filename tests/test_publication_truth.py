@@ -52,7 +52,10 @@ def publishing_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str,
 
 def test_ok_without_rendering_is_not_published(publishing_env: dict[str, Any]) -> None:
     job = pe.create_publish_job(
-        content_id="W99", channel="website", requested_by="Human A"
+        content_id="W99",
+        channel="website",
+        requested_by="Human A",
+        tenant_id="tenant-a",
     )
     result = pe.manual_publish(job["job_id"], requested_by="Human A")
     assert result["adapter_result"]["ok"] is True
@@ -84,7 +87,10 @@ def test_local_static_write_is_not_published(
 
     monkeypatch.setitem(pe.ADAPTERS, "website", _static_shaped)
     job = pe.create_publish_job(
-        content_id="W99", channel="website", requested_by="Human A"
+        content_id="W99",
+        channel="website",
+        requested_by="Human A",
+        tenant_id="tenant-a",
     )
     result = pe.manual_publish(job["job_id"], requested_by="Human A")
     assert result["state"] != pe.STATE_PUBLISHED
@@ -104,7 +110,10 @@ def test_http_success_without_remote_write_is_not_published(
 
     monkeypatch.setitem(pe.ADAPTERS, "website", _http_only)
     job = pe.create_publish_job(
-        content_id="W99", channel="website", requested_by="Human A"
+        content_id="W99",
+        channel="website",
+        requested_by="Human A",
+        tenant_id="tenant-a",
     )
     result = pe.manual_publish(job["job_id"], requested_by="Human A")
     assert result["state"] != pe.STATE_PUBLISHED
@@ -150,7 +159,10 @@ def test_ambiguous_remote_result_does_not_write_again(
 
     monkeypatch.setitem(pe.ADAPTERS, "website", _ambiguous)
     job = pe.create_publish_job(
-        content_id="W99", channel="website", requested_by="Human A"
+        content_id="W99",
+        channel="website",
+        requested_by="Human A",
+        tenant_id="tenant-a",
     )
     result = pe.manual_publish(job["job_id"], requested_by="Human A")
     assert result["publication_truth"] == truth.TRUTH_UNKNOWN_REMOTE

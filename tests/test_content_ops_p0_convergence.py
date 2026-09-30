@@ -419,7 +419,10 @@ def test_engine_adapter_ok_stays_unproven_on_the_read(
     monkeypatch.setattr(pe, "JOBS_DIR", publishing / "jobs")
     _week_tree(tmp_path, status="published")
     job = pe.create_publish_job(
-        content_id="W12", channel="website", requested_by="Human A"
+        content_id="W12",
+        channel="website",
+        requested_by="Human A",
+        tenant_id="tenant-a",
     )
     result = pe.manual_publish(job["job_id"], requested_by="Human A")
     assert result["adapter_result"]["ok"] is True

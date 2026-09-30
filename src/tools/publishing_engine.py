@@ -16,8 +16,11 @@ Celery, n8n, scheduling, or AI publishing.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
+import sqlite3
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -32,6 +35,7 @@ PUBLISHING_DIR = REPO_ROOT / "output" / "publishing"
 JOBS_JSONL = PUBLISHING_DIR / "jobs.jsonl"
 AUDIT_JSONL = PUBLISHING_DIR / "audit.jsonl"
 JOBS_DIR = PUBLISHING_DIR / "jobs"
+ATTEMPTS_DB_NAME = "publication_attempts.sqlite"
 
 # State machine (orchestration layer)
 STATE_EDITORIAL_APPROVED = "editorial_approved"  # prerequisite checkpoint
@@ -338,25 +342,127 @@ ADAPTERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
 }
 
 
+def canonical_destination(channel: str) -> str:
+    """One server destination per registered channel. Not a client field."""
+    return f"{normalize_channel(channel)}:default"
+
+
+def publication_attempt_key(
+    *,
+    tenant_id: str,
+    content_id: str,
+    content_version: str,
+    channel: str,
+    destination: str,
+) -> str:
+    material = "\n".join(
+        (tenant_id, content_id, content_version, channel, destination)
+    )
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+
+def _normalize_tenant_id(tenant_id: str) -> str:
+    tenant = (tenant_id or "").strip()
+    if not tenant or len(tenant) > 80 or any(ch in tenant for ch in "/\\\n\r\x00"):
+        raise ValueError("Publication tenant is not bound")
+    return tenant
+
+
+def _content_version(content_id: str, readiness: dict[str, Any]) -> str:
+    """Immutable bytes of the approved final, otherwise the approval decision id."""
+    roots: list[Path] = []
+    bundle = str(readiness.get("bundle") or "").strip()
+    if bundle:
+        bundle_path = Path(bundle)
+        roots.append(bundle_path if bundle_path.is_absolute() else REPO_ROOT / bundle_path)
+    roots.append(REPO_ROOT / "input" / content_id)
+    for root in roots:
+        final = root / "05_Final.md"
+        if final.is_file():
+            digest = hashlib.sha256(final.read_bytes()).hexdigest()
+            return f"sha256:{digest}"
+    decision_id = str(readiness.get("editorial_decision_id") or "").strip()
+    if not decision_id:
+        raise LookupError("Content version is not bound to an artifact or decision")
+    return f"editorial-decision:{decision_id}"
+
+
+def _attempts_connection() -> sqlite3.Connection:
+    _ensure_dirs()
+    conn = sqlite3.connect(
+        publishing_dir() / ATTEMPTS_DB_NAME,
+        timeout=10,
+        isolation_level=None,
+    )
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=10000")
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS publication_attempts (
+            tenant_id TEXT NOT NULL,
+            content_id TEXT NOT NULL,
+            content_version TEXT NOT NULL,
+            channel TEXT NOT NULL,
+            destination TEXT NOT NULL,
+            job_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (
+                tenant_id,
+                content_id,
+                content_version,
+                channel,
+                destination
+            )
+        )
+        """
+    )
+    return conn
+
+
+def _return_existing_attempt(job_id: str) -> dict[str, Any]:
+    existing = get_job(job_id)
+    if existing is None:
+        raise LookupError("Canonical publication attempt has no job record")
+    replay = dict(existing)
+    replay["idempotent"] = True
+    return replay
+
+
 def create_publish_job(
     *,
     content_id: str,
     channel: str,
     requested_by: str,
+    tenant_id: str,
     notes: str = "",
 ) -> dict[str, Any]:
-    """Create a publish job in publish_pending after editorial approval check."""
+    """Create one canonical publication attempt, or replay the existing one.
+
+    Uniqueness is the primary key on publication_attempts. A prior read of the
+    job directory is not the lock. The same tenant, content version, channel,
+    and destination cannot insert a second row.
+    """
     if not is_human_requester(requested_by):
         raise PermissionError(
             "Human requester required. AI/automation cannot create publish jobs."
         )
+    tenant = _normalize_tenant_id(tenant_id)
     cid = normalize_content_id(content_id)
     ch = normalize_channel(channel)
+    destination = canonical_destination(ch)
     readiness = validate_publish_readiness(cid)
     if not readiness["ok"]:
         raise LookupError("; ".join(readiness["errors"]))
-
-    job_id = f"pub_{cid}_{ch}_{uuid.uuid4().hex[:10]}"
+    content_version = _content_version(cid, readiness)
+    attempt_key = publication_attempt_key(
+        tenant_id=tenant,
+        content_id=cid,
+        content_version=content_version,
+        channel=ch,
+        destination=destination,
+    )
+    job_id = f"pub_{attempt_key[:24]}"
     now = utc_now_iso()
     job: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
@@ -395,21 +501,65 @@ def create_publish_job(
         "website_engine": False,
         "social_engine": False,
         "campaign_engine": False,
+        "tenant_id": tenant,
+        "content_version": content_version,
+        "destination": destination,
+        "attempt_key": attempt_key,
+        "idempotent": False,
     }
-    _append_jsonl(jobs_jsonl(), job)
-    _write_job_snapshot(job)
-    append_audit(
-        job_id=job_id,
-        bundle_id=cid,
-        requested_by=requested_by.strip(),
-        channel=ch,
-        state=STATE_PUBLISH_PENDING,
-        errors=[],
-        retry_count=0,
-        notes=notes or "",
-        event="job_created",
-    )
-    return job
+    last_locked: sqlite3.OperationalError | None = None
+    for _attempt in range(6):
+        conn = _attempts_connection()
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO publication_attempts (
+                        tenant_id, content_id, content_version, channel,
+                        destination, job_id, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (tenant, cid, content_version, ch, destination, job_id, now),
+                )
+            except sqlite3.IntegrityError:
+                conn.execute("ROLLBACK")
+                row = conn.execute(
+                    """
+                    SELECT job_id FROM publication_attempts
+                    WHERE tenant_id = ? AND content_id = ? AND content_version = ?
+                      AND channel = ? AND destination = ?
+                    """,
+                    (tenant, cid, content_version, ch, destination),
+                ).fetchone()
+                if row is None:
+                    raise LookupError("Canonical publication attempt could not be read")
+                return _return_existing_attempt(str(row["job_id"]))
+            _append_jsonl(jobs_jsonl(), job)
+            _write_job_snapshot(job)
+            append_audit(
+                job_id=job_id,
+                bundle_id=cid,
+                requested_by=requested_by.strip(),
+                channel=ch,
+                state=STATE_PUBLISH_PENDING,
+                errors=[],
+                retry_count=0,
+                notes=notes or "",
+                event="job_created",
+            )
+            conn.execute("COMMIT")
+            return job
+        except sqlite3.OperationalError as exc:
+            last_locked = exc
+            if "locked" not in str(exc).lower():
+                raise
+            time.sleep(0.05)
+        finally:
+            conn.close()
+    if last_locked is not None:
+        raise last_locked
+    raise LookupError("Canonical publication attempt was not stored")
 
 
 def _transition(
