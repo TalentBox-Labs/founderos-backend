@@ -42,7 +42,7 @@ SENTINEL_DESTINATION = "inert:non-publishable"
 SENTINEL_TRUTH = "inert_non_publishable"
 SENTINEL_STATE = "inert_sentinel"
 _migrate_lock = threading.Lock()
-_ready_binds: set[int] = set()
+_ready_binds: set[str] = set()
 
 _INERT_CHECK_SQL = (
     "ALTER TABLE publication_attempts ADD CONSTRAINT "
@@ -128,7 +128,7 @@ def migrate_publication_attempts(session_factory: Any) -> None:
     mechanism. Uniqueness remains the database primary key.
     """
     bind = _session_factory_bind(session_factory)
-    key = id(bind)
+    key = bind.url.render_as_string(hide_password=True)
     if key in _ready_binds:
         return
     with _migrate_lock:
