@@ -19,13 +19,17 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-import sqlite3
 import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError, OperationalError
+
+from revenue_os.database import SessionLocal
+from revenue_os.models.publication_attempt import PublicationAttempt
 from src.tools import editorial_approval as ea
 from src.tools import publication_truth as publication_truth
 from src.tools.runtime_paths import REPO_ROOT
@@ -35,7 +39,9 @@ PUBLISHING_DIR = REPO_ROOT / "output" / "publishing"
 JOBS_JSONL = PUBLISHING_DIR / "jobs.jsonl"
 AUDIT_JSONL = PUBLISHING_DIR / "audit.jsonl"
 JOBS_DIR = PUBLISHING_DIR / "jobs"
+# Retired filesystem ledger. Production authority is the application database.
 ATTEMPTS_DB_NAME = "publication_attempts.sqlite"
+_attempt_table_ready = False
 
 # State machine (orchestration layer)
 STATE_EDITORIAL_APPROVED = "editorial_approved"  # prerequisite checkpoint
@@ -216,7 +222,19 @@ def get_job(job_id: str) -> dict[str, Any] | None:
     jid = (job_id or "").strip()
     if not jid:
         return None
-    path = JOBS_DIR / f"{jid}.json"
+    snapshot = _read_job_snapshot(jid)
+    durable = _load_attempt_by_job_id(jid)
+    if snapshot is None and durable is None:
+        return None
+    if snapshot is None:
+        return _job_from_attempt(durable)
+    if durable is not None:
+        _overlay_attempt(snapshot, durable)
+    return snapshot
+
+
+def _read_job_snapshot(job_id: str) -> dict[str, Any] | None:
+    path = JOBS_DIR / f"{job_id}.json"
     if path.is_file():
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
@@ -225,7 +243,7 @@ def get_job(job_id: str) -> dict[str, Any] | None:
         except (OSError, json.JSONDecodeError):
             return None
     for job in load_all_jobs():
-        if job.get("job_id") == jid:
+        if job.get("job_id") == job_id:
             return job
     return None
 
@@ -387,37 +405,161 @@ def _content_version(content_id: str, readiness: dict[str, Any]) -> str:
     return f"editorial-decision:{decision_id}"
 
 
-def _attempts_connection() -> sqlite3.Connection:
-    _ensure_dirs()
-    conn = sqlite3.connect(
-        publishing_dir() / ATTEMPTS_DB_NAME,
-        timeout=10,
-        isolation_level=None,
-    )
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA busy_timeout=10000")
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS publication_attempts (
-            tenant_id TEXT NOT NULL,
-            content_id TEXT NOT NULL,
-            content_version TEXT NOT NULL,
-            channel TEXT NOT NULL,
-            destination TEXT NOT NULL,
-            job_id TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            PRIMARY KEY (
-                tenant_id,
-                content_id,
-                content_version,
-                channel,
-                destination
-            )
+def _attempt_bind() -> Any:
+    bind = getattr(SessionLocal, "kw", {}).get("bind")
+    if bind is not None:
+        return bind
+    db = SessionLocal()
+    try:
+        return db.get_bind()
+    finally:
+        db.close()
+
+
+def _ensure_attempt_table() -> None:
+    """Create the attempt table once. Uniqueness is the primary key, not this flag."""
+    global _attempt_table_ready
+    if _attempt_table_ready:
+        return
+    PublicationAttempt.__table__.create(bind=_attempt_bind(), checkfirst=True)
+    _attempt_table_ready = True
+
+
+def _sqlite_busy_timeout(db: Any) -> None:
+    bind = db.get_bind()
+    if bind is not None and bind.dialect.name == "sqlite":
+        db.execute(text("PRAGMA busy_timeout=10000"))
+
+
+def _load_attempt_by_job_id(job_id: str) -> PublicationAttempt | None:
+    _ensure_attempt_table()
+    db = SessionLocal()
+    try:
+        row = (
+            db.query(PublicationAttempt)
+            .filter(PublicationAttempt.job_id == job_id)
+            .one_or_none()
         )
-        """
+        if row is not None:
+            db.expunge(row)
+        return row
+    finally:
+        db.close()
+
+
+def _load_attempt_by_identity(
+    *,
+    tenant_id: str,
+    content_id: str,
+    content_version: str,
+    channel: str,
+    destination: str,
+) -> PublicationAttempt | None:
+    _ensure_attempt_table()
+    db = SessionLocal()
+    try:
+        row = (
+            db.query(PublicationAttempt)
+            .filter(
+                PublicationAttempt.tenant_id == tenant_id,
+                PublicationAttempt.content_id == content_id,
+                PublicationAttempt.content_version == content_version,
+                PublicationAttempt.channel == channel,
+                PublicationAttempt.destination == destination,
+            )
+            .one_or_none()
+        )
+        if row is not None:
+            db.expunge(row)
+        return row
+    finally:
+        db.close()
+
+
+def _overlay_attempt(job: dict[str, Any], row: PublicationAttempt) -> dict[str, Any]:
+    """Durable outcome wins over a stale filesystem cache."""
+    job["state"] = row.state
+    job["publication_truth"] = row.publication_truth
+    job["verification_status"] = row.verification_status
+    job["remote_write_outstanding"] = bool(row.remote_write_outstanding)
+    job["tenant_id"] = row.tenant_id
+    job["content_version"] = row.content_version
+    job["destination"] = row.destination
+    job["channel"] = row.channel
+    job["attempt_key"] = publication_attempt_key(
+        tenant_id=row.tenant_id,
+        content_id=row.content_id,
+        content_version=row.content_version,
+        channel=row.channel,
+        destination=row.destination,
     )
-    return conn
+    return job
+
+
+def _job_from_attempt(row: PublicationAttempt) -> dict[str, Any]:
+    """Rebuild a fail-closed job when the filesystem cache did not survive."""
+    job = {
+        "schema_version": SCHEMA_VERSION,
+        "job_id": row.job_id,
+        "bundle_id": row.content_id,
+        "channel": row.channel,
+        "channel_owner": CHANNEL_OWNERS.get(row.channel, ""),
+        "state": row.state,
+        "state_history": [],
+        "requested_by": row.requested_by,
+        "notes": "",
+        "created_at": row.created_at,
+        "updated_at": row.created_at,
+        "retry_count": 0,
+        "errors": [],
+        "editorial_decision_id": None,
+        "editorial_phase": None,
+        "bundle": None,
+        "adapter_result": None,
+        "publication_truth": row.publication_truth,
+        "verification_status": row.verification_status,
+        "remote_write_outstanding": bool(row.remote_write_outstanding),
+        "cancelled": row.state == STATE_CANCELLED,
+        "orchestration_only": True,
+        "website_engine": False,
+        "social_engine": False,
+        "campaign_engine": False,
+        "tenant_id": row.tenant_id,
+        "content_version": row.content_version,
+        "destination": row.destination,
+        "attempt_key": publication_attempt_key(
+            tenant_id=row.tenant_id,
+            content_id=row.content_id,
+            content_version=row.content_version,
+            channel=row.channel,
+            destination=row.destination,
+        ),
+        "idempotent": False,
+    }
+    return job
+
+
+def _persist_attempt_state(job: dict[str, Any]) -> None:
+    _ensure_attempt_table()
+    db = SessionLocal()
+    try:
+        row = (
+            db.query(PublicationAttempt)
+            .filter(PublicationAttempt.job_id == str(job["job_id"]))
+            .one_or_none()
+        )
+        if row is None:
+            return
+        row.state = str(job.get("state") or "")
+        row.publication_truth = str(job.get("publication_truth") or "")
+        row.verification_status = str(job.get("verification_status") or "")
+        row.remote_write_outstanding = bool(job.get("remote_write_outstanding"))
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
 
 
 def _return_existing_attempt(job_id: str) -> dict[str, Any]:
@@ -439,9 +581,10 @@ def create_publish_job(
 ) -> dict[str, Any]:
     """Create one canonical publication attempt, or replay the existing one.
 
-    Uniqueness is the primary key on publication_attempts. A prior read of the
-    job directory is not the lock. The same tenant, content version, channel,
-    and destination cannot insert a second row.
+    Uniqueness is the primary key on publication_attempts in the application
+    database. A prior read of the job directory is not the lock. The same
+    tenant, content version, channel, and destination cannot insert a second
+    row. The filesystem job snapshot is a cache of that row.
     """
     if not is_human_requester(requested_by):
         raise PermissionError(
@@ -507,34 +650,29 @@ def create_publish_job(
         "attempt_key": attempt_key,
         "idempotent": False,
     }
-    last_locked: sqlite3.OperationalError | None = None
+    last_locked: OperationalError | None = None
     for _attempt in range(6):
-        conn = _attempts_connection()
+        _ensure_attempt_table()
+        db = SessionLocal()
         try:
-            conn.execute("BEGIN IMMEDIATE")
-            try:
-                conn.execute(
-                    """
-                    INSERT INTO publication_attempts (
-                        tenant_id, content_id, content_version, channel,
-                        destination, job_id, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (tenant, cid, content_version, ch, destination, job_id, now),
+            _sqlite_busy_timeout(db)
+            db.add(
+                PublicationAttempt(
+                    tenant_id=tenant,
+                    content_id=cid,
+                    content_version=content_version,
+                    channel=ch,
+                    destination=destination,
+                    job_id=job_id,
+                    created_at=now,
+                    requested_by=requested_by.strip(),
+                    state=STATE_PUBLISH_PENDING,
+                    publication_truth=publication_truth.TRUTH_UNPROVEN,
+                    verification_status=publication_truth.TRUTH_UNPROVEN,
+                    remote_write_outstanding=False,
                 )
-            except sqlite3.IntegrityError:
-                conn.execute("ROLLBACK")
-                row = conn.execute(
-                    """
-                    SELECT job_id FROM publication_attempts
-                    WHERE tenant_id = ? AND content_id = ? AND content_version = ?
-                      AND channel = ? AND destination = ?
-                    """,
-                    (tenant, cid, content_version, ch, destination),
-                ).fetchone()
-                if row is None:
-                    raise LookupError("Canonical publication attempt could not be read")
-                return _return_existing_attempt(str(row["job_id"]))
+            )
+            db.commit()
             _append_jsonl(jobs_jsonl(), job)
             _write_job_snapshot(job)
             append_audit(
@@ -548,15 +686,27 @@ def create_publish_job(
                 notes=notes or "",
                 event="job_created",
             )
-            conn.execute("COMMIT")
             return job
-        except sqlite3.OperationalError as exc:
+        except IntegrityError:
+            db.rollback()
+            existing = _load_attempt_by_identity(
+                tenant_id=tenant,
+                content_id=cid,
+                content_version=content_version,
+                channel=ch,
+                destination=destination,
+            )
+            if existing is None:
+                raise LookupError("Canonical publication attempt could not be read")
+            return _return_existing_attempt(existing.job_id)
+        except OperationalError as exc:
+            db.rollback()
             last_locked = exc
             if "locked" not in str(exc).lower():
                 raise
             time.sleep(0.05)
         finally:
-            conn.close()
+            db.close()
     if last_locked is not None:
         raise last_locked
     raise LookupError("Canonical publication attempt was not stored")
@@ -587,6 +737,7 @@ def _transition(
         }
     )
     job["state_history"] = history
+    _persist_attempt_state(job)
     _write_job_snapshot(job)
     append_audit(
         job_id=str(job["job_id"]),
@@ -718,6 +869,10 @@ def manual_publish(job_id: str, *, requested_by: str, notes: str = "") -> dict[s
             notes="Adapter missing",
         )
 
+    job["remote_write_outstanding"] = True
+    job["publication_truth"] = publication_truth.TRUTH_UNKNOWN_REMOTE
+    job["verification_status"] = publication_truth.TRUTH_UNKNOWN_REMOTE
+    _persist_attempt_state(job)
     result = adapter(job)
     if not isinstance(result, dict):
         result = {

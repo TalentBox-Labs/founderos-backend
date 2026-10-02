@@ -66,6 +66,7 @@ from revenue_os.models.marketing import (
     PartnershipLead,
 )
 from revenue_os.models.session_revocation import SessionRevocation
+from revenue_os.models.publication_attempt import PublicationAttempt
 
 __all__ = [
     "Company",
@@ -124,4 +125,5 @@ __all__ = [
     "OrganizationIntegrationBinding",
     "MarketingSpendRecord",
     "SessionRevocation",
+    "PublicationAttempt",
 ]

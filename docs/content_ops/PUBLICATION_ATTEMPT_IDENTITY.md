@@ -18,7 +18,7 @@ tenant_id
 
 `destination` is `{channel}:default`. The publishing engine has one server destination per registered channel. Callers cannot supply a destination string.
 
-The attempt is stored in `output/publishing/publication_attempts.sqlite`. The primary key is the identity tuple. `create_publish_job` inserts that row inside `BEGIN IMMEDIATE`. A conflicting insert returns the existing job and does not call a channel adapter.
+The attempt is stored in the application database table `publication_attempts`. The primary key is the identity tuple. `create_publish_job` inserts that row in one database transaction. A conflicting insert returns the existing job and does not call a channel adapter. `output/publishing/publication_attempts.sqlite` is not an authority. Job JSON under `output/publishing/` is a cache; durable state on the row wins after a restart.
 
 Creating a job does not publish. Editorial approval sets `authorizes_publish` false and does not insert an attempt. Adapter success without remote acknowledgement stays unproven. Remote acknowledgement is not verification.
 

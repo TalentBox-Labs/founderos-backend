@@ -29,6 +29,7 @@ from src.tools import content_ops_current_week as current_week
 from src.tools import editorial_approval as ea
 from src.tools import publication_truth as truth
 from src.tools import publishing_engine as pe
+from tests.attempt_ledger import bind_attempt_ledger
 from src.tools.publication_truth import (
     TRUTH_FAILED,
     TRUTH_REMOTE_WRITE_CONFIRMED,
@@ -417,6 +418,7 @@ def test_engine_adapter_ok_stays_unproven_on_the_read(
     monkeypatch.setattr(pe, "JOBS_JSONL", publishing / "jobs.jsonl")
     monkeypatch.setattr(pe, "AUDIT_JSONL", publishing / "audit.jsonl")
     monkeypatch.setattr(pe, "JOBS_DIR", publishing / "jobs")
+    bind_attempt_ledger(monkeypatch, tmp_path, pe)
     _week_tree(tmp_path, status="published")
     job = pe.create_publish_job(
         content_id="W12",
