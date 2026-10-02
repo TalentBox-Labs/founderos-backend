@@ -147,7 +147,9 @@ def test_s4_5_connector_vault_default_no_global_fallback() -> None:
 
 def test_canonical_api_surface_is_runner_api() -> None:
     dockerfile = (ROOT / "Dockerfile").read_text()
-    assert "runner_api:app" in dockerfile
+    assert "scripts/publication_admission_start.sh" in dockerfile
+    script = (ROOT / "scripts" / "publication_admission_start.sh").read_text()
+    assert "runner_api:app" in script
     decision = (M0_DOCS / "M0_API_SURFACE_DECISION.md").read_text()
     assert "CANONICAL_FOR_NEW_ORCHESTRATION" in decision
     assert "runner_api:app" in decision

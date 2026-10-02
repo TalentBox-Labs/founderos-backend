@@ -30,5 +30,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
     CMD curl -fsS "http://127.0.0.1:${PORT:-8000}/health" || exit 1
 
-# Bind all interfaces; PORT is supplied by Render (defaults locally to 8000).
-CMD ["sh", "-c", "uvicorn runner_api:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# Bind only after the ledger guard admits this image. PORT expands in the script.
+CMD ["sh", "scripts/publication_admission_start.sh"]

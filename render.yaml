@@ -21,10 +21,9 @@ services:
     plan: free
     autoDeploy: false
     healthCheckPath: /health
-    # Admission gate for publication authority. The command fails closed on an
-    # image that does not contain the ledger guard, so a pre-PostgreSQL SHA
-    # cannot become the live process after the compatibility row exists.
-    # /health stays liveness-only and does not query the database.
+    # Free does not execute preDeployCommand. The image start script is the
+    # admission that runs on this binary. A Rollback still uses the target
+    # deploy's own Docker command and image. /health stays liveness-only.
     preDeployCommand: python -c "from src.tools.publication_ledger_guard import main; raise SystemExit(main())"
     envVars:
       - key: SECRET_KEY
