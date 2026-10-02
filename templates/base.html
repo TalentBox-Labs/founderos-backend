@@ -15,8 +15,8 @@
       --accent-soft: #3a4bcc22;
       --accent-glow: #5b6ef540;
       --text:        #e4e8f0;
-      --text-muted:  #6b7280;
-      --text-dim:    #4b5563;
+      --text-muted:  #a8b0c2;
+      --text-dim:    #8b93a7;
       --green:       #22c55e;
       --green-soft:  #22c55e20;
       --amber:       #f59e0b;
@@ -28,6 +28,27 @@
       --radius:      10px;
       --radius-sm:   6px;
       --shadow:      0 4px 24px #00000040;
+      --surface-raised: #1c2030;
+      --text-primary: #e4e8f0;
+      --text-secondary: #8b93a7;
+      --success: #22c55e;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --info: #3b82f6;
+      --blocked: #c4b5fd;
+      --unknown: #94a3b8;
+      --disabled: #4b5563;
+      --space-1: 4px;
+      --space-2: 8px;
+      --space-3: 12px;
+      --space-4: 16px;
+      --space-5: 24px;
+      --space-6: 32px;
+      --elevation-1: 0 1px 0 #ffffff0a, 0 8px 24px #00000055;
+      --motion: 150ms;
+      --sidebar-width: 232px;
+      --bp-laptop: 1100px;
+      --bp-tablet: 800px;
     }
     /* ─── Reset ─────────────────────────────────────────────────────────── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -108,7 +129,7 @@
     }
     .topbar-title { font-size: 16px; font-weight: 600; }
     .topbar-meta  { font-size: 12px; color: var(--text-muted); }
-    .topbar-right { display: flex; align-items: center; gap: 12px; }
+    .topbar-right { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
     .pill {
       display: inline-flex; align-items: center; gap: 5px;
       padding: 3px 10px; border-radius: 999px;
@@ -251,13 +272,115 @@
     details.nav-collapsed summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     details.nav-collapsed[data-persistent="true"] > summary { pointer-events: none; cursor: default; }
     details.nav-collapsed[data-persistent="true"] > div { display: block; }
+
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .skip-link {
+      position: absolute; left: 12px; top: -40px; background: var(--surface-raised);
+      color: var(--text-primary); padding: 8px 12px; z-index: 20;
+    }
+    .skip-link:focus { top: 12px; }
+    .nav-item .nav-label { min-width: 0; }
+    .sidebar-tools { display: flex; gap: 8px; padding: 10px 12px 0; }
+    .os-icon-btn, .sidebar-toggle {
+      background: var(--surface2); color: var(--text); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); min-width: 32px; min-height: 32px; padding: 4px 8px;
+    }
+    body.sidebar-is-collapsed .sidebar { width: 72px; min-width: 72px; }
+    body.sidebar-is-collapsed .logo-text,
+    body.sidebar-is-collapsed .logo-sub,
+    body.sidebar-is-collapsed .nav-label,
+    body.sidebar-is-collapsed .nav-section-label,
+    body.sidebar-is-collapsed .sidebar-footer,
+    body.sidebar-is-collapsed summary { font-size: 0; }
+    .os-palette, .os-notice {
+      position: fixed; inset: 0; background: #00000088; z-index: 30;
+      display: flex; align-items: flex-start; justify-content: center; padding: 12vh 16px 16px;
+    }
+    .os-palette[hidden], .os-notice[hidden] { display: none; }
+    .os-palette-panel, .os-notice-panel {
+      width: min(560px, 100%); background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); box-shadow: var(--elevation-1); padding: 16px;
+    }
+    .os-palette-panel input { width: 100%; margin: 8px 0 12px; }
+    .os-palette-list { list-style: none; max-height: 320px; overflow: auto; }
+    .os-palette-list a { display: block; padding: 8px; border-radius: var(--radius-sm); color: var(--text); }
+    .os-palette-list a:hover { background: var(--surface2); text-decoration: none; }
+    .os-surface h1 { font-size: 22px; font-weight: 650; letter-spacing: -0.02em; }
+    .os-crumb, .os-purpose, .os-sources, .os-kpi-why, .os-action-detail { color: var(--text-secondary); font-size: 13px; }
+    .os-purpose { max-width: 72ch; margin: 6px 0 16px; }
+    .os-tabs { display: flex; gap: 4px; flex-wrap: wrap; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+    .os-tab { color: var(--text-secondary); padding: 8px 10px; border-bottom: 2px solid transparent; text-decoration: none; font-size: 13px; }
+    .os-tab.is-current { color: var(--text-primary); border-bottom-color: var(--accent); text-decoration: none; }
+    .os-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px; }
+    .os-kpi, .os-decision, .os-hermes, .os-alert, .os-pipeline {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px 16px;
+    }
+    .os-kpi h2, .os-section-title { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--text-secondary); }
+    .os-kpi-value { font-size: 22px; font-weight: 650; margin: 4px 0; }
+    .os-alert { margin-bottom: 12px; }
+    .os-alert p { margin-top: 4px; }
+    .os-alert-danger { border-color: var(--danger); }
+    .os-alert-warning { border-color: var(--warning); }
+    .os-alert-blocked { border-color: var(--blocked); }
+    .os-alert-unknown { border-color: var(--unknown); }
+    .os-alert-info { border-color: var(--info); }
+    .os-status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; }
+    .os-status::before { content: ""; width: 8px; height: 8px; border-radius: 2px; background: currentColor; }
+    .os-status-success, .os-status-ready { color: var(--success); }
+    .os-status-warning, .os-status-requires_founder { color: var(--warning); }
+    .os-status-danger { color: var(--danger); }
+    .os-status-blocked { color: var(--blocked); }
+    .os-status-info, .os-status-completed { color: var(--info); }
+    .os-status-unknown, .os-status-informational { color: var(--unknown); }
+    .os-status-disabled { color: var(--disabled); }
+    .os-decision { margin-bottom: 12px; }
+    .os-decision h3 { margin: 8px 0; font-size: 15px; }
+    .os-decision dl { display: grid; gap: 6px; }
+    .os-decision dt { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-secondary); }
+    .os-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
+    .os-pipeline ol { list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin-top: 10px; }
+    .os-pipeline li { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px; display: grid; gap: 4px; }
+    .os-table { font-size: 13px; }
+    .os-table caption { text-align: left; caption-side: bottom; color: var(--text-secondary); font-size: 12px; padding-top: 8px; }
+    .os-empty { color: var(--text-secondary); padding: 18px 8px; }
+    .os-filter { margin-bottom: 12px; display: grid; gap: 4px; max-width: 320px; font-size: 12px; color: var(--text-secondary); }
+    .os-section-title { margin: 18px 0 8px; }
+    .os-swatches, .os-specimen-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 16px; align-items: center; }
+    .os-swatch { border: 1px solid var(--border); background: var(--surface); padding: 8px 10px; border-radius: var(--radius-sm); }
+    .os-swatch.is-raised { background: var(--surface-raised); }
+    .os-sources { margin-top: 18px; }
+    .os-page-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+    .os-page-head h1 { overflow-wrap: anywhere; }
+    .os-read-state { font-size: 12px; font-weight: 650; }
+    .os-operator { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary); }
+    .os-operator-role { border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; color: var(--text); }
+    .nav-mark { display: none; width: 22px; text-align: center; font-size: 10px; font-weight: 700; letter-spacing: 0; color: var(--text-secondary); }
+    body.sidebar-is-collapsed .nav-mark { display: inline-block; font-size: 10px; }
+    body.sidebar-is-collapsed .nav-item { justify-content: center; padding-inline: 4px; }
+    body.sidebar-is-collapsed .sidebar { overflow-x: hidden; }
+    .os-table thead th { position: sticky; top: 0; background: var(--surface); z-index: 1; }
+    .os-table td, .os-table th { overflow-wrap: anywhere; }
+    .os-table tbody tr { cursor: default; }
+    .os-loading { display: grid; gap: 8px; }
+    .os-loading span { display: block; height: 12px; border-radius: 4px; background: linear-gradient(90deg, var(--surface2), var(--border), var(--surface2)); }
+    .os-permission, .os-drawer {
+      border: 1px dashed var(--border); border-radius: var(--radius-sm); padding: 14px 16px; background: var(--surface);
+    }
+    .os-audit { font-size: 12px; color: var(--text-secondary); border-top: 1px solid var(--border); margin-top: 16px; padding-top: 10px; }
+    .os-tabs { overflow-x: auto; }
+    @media (max-width: 800px) {
+      .os-table td[data-priority="low"], .os-table th[data-priority="low"] { display: none; }
+      .topbar { padding: 10px 12px; align-items: flex-start; }
+      .os-operator-role { display: none; }
+    }
   </style>
   {% block extra_head %}{% endblock %}
 </head>
 <body>
+<a class="skip-link" href="#main-content">Skip to content</a>
 
 <!-- ░ Sidebar ─────────────────────────────────────────────────────────────── -->
-<aside class="sidebar">
+<aside class="sidebar" id="app-sidebar">
   <div class="sidebar-logo">
     <div class="logo-icon">F</div>
     <div>
@@ -266,77 +389,154 @@
     </div>
   </div>
 
-  <div class="nav-section">
-    <div class="nav-section-label">Founder</div>
-    <a href="/command" class="nav-item {% if active_page == 'command' %}active{% endif %}" aria-label="Home, Command Center">
-      <span class="icon">🎛️</span> Command Center
-    </a>
-    <a href="/demand" class="nav-item {% if active_page == 'demand' %}active{% endif %}" aria-label="People">
-      <span class="icon">📥</span> Demand &amp; Contacts
-    </a>
-    <a href="/pending-approvals" class="nav-item {% if active_page == 'approvals' %}active{% endif %}">
-      <span class="icon">✅</span> Approvals
-    </a>
-    <a href="/activity" class="nav-item {% if active_page == 'activity' %}active{% endif %}">
-      <span class="icon">📜</span> Activity
-    </a>
-    <a href="/operator" class="nav-item {% if active_page == 'operator' %}active{% endif %}">
-      <span class="icon">🧭</span> Revenue Workflow
-    </a>
+  <div class="sidebar-tools">
+    <button type="button" class="sidebar-toggle" id="sidebar-toggle" aria-controls="app-sidebar" aria-expanded="true">Collapse</button>
   </div>
+
+  <nav class="nav-section" aria-label="Workspaces" data-testid="enterprise-nav">
+    <div class="nav-section-label">Home</div>
+    <a href="/home" class="nav-item {% if active_page == 'home' %}active{% endif %}" {% if active_page == 'home' %}aria-current="page"{% endif %} title="Founder Home">
+      <span class="nav-mark" aria-hidden="true">Ho</span>
+      <span class="nav-label">Founder Home</span>
+    </a>
+    <a href="/command" class="nav-item {% if active_page == 'command' %}active{% endif %}" aria-label="Home, Command Center" {% if active_page == 'command' %}aria-current="page"{% endif %} title="Command Center">
+      <span class="nav-mark" aria-hidden="true">CC</span>
+      <span class="nav-label">Command Center</span>
+    </a>
+    <a href="/activity" class="nav-item {% if active_page == 'activity' %}active{% endif %}" title="Global Activity">
+      <span class="nav-mark" aria-hidden="true">Ac</span>
+      <span class="nav-label">Global Activity</span>
+    </a>
+  </nav>
+
+  {% set revenue_pages = ['revenue', 'revenue_contacts', 'revenue_companies', 'revenue_deals', 'revenue_pipeline', 'revenue_activities', 'revenue_prospecting', 'revenue_intelligence', 'demand', 'operator', 'sales'] %}
+  <nav class="nav-section" aria-label="Revenue">
+    <details class="nav-collapsed"{% if (active_page|default('')) in revenue_pages %} open{% endif %}>
+      <summary>Revenue</summary>
+      <div style="padding-top:4px">
+        <a href="/os/revenue" class="nav-item {% if active_page == 'revenue' %}active{% endif %}"><span class="nav-label">Overview</span></a>
+        <a href="/os/revenue/contacts" class="nav-item {% if active_page == 'revenue_contacts' %}active{% endif %}"><span class="nav-label">Contacts</span></a>
+        <a href="/demand" class="nav-item {% if active_page == 'demand' %}active{% endif %}"><span class="nav-label">Demand &amp; Contacts</span></a>
+        <a href="/os/revenue/companies" class="nav-item {% if active_page == 'revenue_companies' %}active{% endif %}"><span class="nav-label">Companies</span></a>
+        <a href="/os/revenue/deals" class="nav-item {% if active_page == 'revenue_deals' %}active{% endif %}"><span class="nav-label">Deals</span></a>
+        <a href="/os/revenue/pipeline" class="nav-item {% if active_page == 'revenue_pipeline' %}active{% endif %}"><span class="nav-mark" aria-hidden="true">Pi</span><span class="nav-label">Pipeline</span></a>
+        <a href="/os/revenue/activities" class="nav-item {% if active_page == 'revenue_activities' %}active{% endif %}"><span class="nav-mark" aria-hidden="true">Ac</span><span class="nav-label">Activities</span></a>
+        <a href="/os/revenue/prospecting" class="nav-item {% if active_page == 'revenue_prospecting' %}active{% endif %}"><span class="nav-mark" aria-hidden="true">Pr</span><span class="nav-label">Prospecting</span></a>
+        <a href="/operator" class="nav-item {% if active_page == 'operator' %}active{% endif %}"><span class="nav-mark" aria-hidden="true">Wf</span><span class="nav-label">Revenue Workflow</span></a>
+        <a href="/sales" class="nav-item {% if active_page == 'sales' %}active{% endif %}"><span class="nav-mark" aria-hidden="true">Sc</span><span class="nav-label">Prospecting screen</span></a>
+      </div>
+    </details>
+  </nav>
+
+  {% set marketing_pages = ['marketing_os', 'marketing_campaigns', 'marketing_demand', 'marketing_seo', 'marketing_performance', 'marketing_analytics', 'marketing', 'seo'] %}
+  <nav class="nav-section" aria-label="Marketing">
+    <details class="nav-collapsed"{% if (active_page|default('')) in marketing_pages %} open{% endif %}>
+      <summary>Marketing</summary>
+      <div style="padding-top:4px">
+        <a href="/os/marketing" class="nav-item {% if active_page == 'marketing_os' %}active{% endif %}"><span class="nav-label">Overview</span></a>
+        <a href="/os/marketing/campaigns" class="nav-item {% if active_page == 'marketing_campaigns' %}active{% endif %}"><span class="nav-label">Campaigns</span></a>
+        <a href="/os/marketing/demand" class="nav-item {% if active_page == 'marketing_demand' %}active{% endif %}"><span class="nav-label">Demand</span></a>
+        <a href="/marketing" class="nav-item {% if active_page == 'marketing' %}active{% endif %}"><span class="nav-label">Marketing agent</span></a>
+        <a href="/seo" class="nav-item {% if active_page == 'seo' %}active{% endif %}"><span class="nav-label">SEO</span></a>
+        <a href="/analytics" class="nav-item {% if active_page == 'analytics' %}active{% endif %}"><span class="nav-label">Analytics</span></a>
+      </div>
+    </details>
+  </nav>
 
   <div class="nav-section">
     {% set content_ops_pages = [
       'dashboard', 'cockpit', 'analytics', 'weeks', 'content_studio',
-      'editorial', 'publishing', 'seo', 'pipeline', 'marketing', 'sales',
-      'mcp', 'content_ops'
+      'editorial', 'publishing', 'pipeline', 'content_ops',
+      'os_content', 'os_content_calendar', 'os_content_studio',
+      'os_content_editorial', 'os_content_publishing', 'os_content_seo',
+      'os_content_pipeline', 'os_content_analytics'
     ] %}
     {% set content_ops_nav_open = (active_page|default('')) in content_ops_pages %}
     <details class="nav-collapsed" data-testid="content-ops-nav"{% if content_ops_nav_open %} open data-persistent="true"{% endif %}>
-      <summary{% if content_ops_nav_open %} data-current-section="true"{% endif %}>Content Ops</summary>
+      <summary{% if content_ops_nav_open %} data-current-section="true"{% endif %}>Content</summary>
       <div style="padding-top:4px">
+    <a href="/os/content" class="nav-item {% if active_page == 'os_content' %}active{% endif %}">
+      <span class="nav-label">Overview</span>
+    </a>
     <a href="/content-ops" class="nav-item {% if active_page == 'content_ops' %}active{% endif %}" data-testid="nav-content-ops-beta">
-      <span class="icon">▣</span> Content Ops Beta
+      <span class="nav-label">Content Ops Beta</span>
     </a>
     <a href="/" class="nav-item {% if active_page == 'dashboard' %}active{% endif %}">
-      <span class="icon">⬛</span> Dashboard
+      <span class="nav-label">Dashboard</span>
     </a>
     <a href="/cockpit" class="nav-item {% if active_page == 'cockpit' %}active{% endif %}">
-      <span class="icon">📊</span> Executive Cockpit (legacy)
-    </a>
-    <a href="/analytics" class="nav-item {% if active_page == 'analytics' %}active{% endif %}">
-      <span class="icon">📈</span> Analytics
+      <span class="nav-label">Executive Cockpit</span>
     </a>
     <a href="/weeks" class="nav-item {% if active_page == 'weeks' %}active{% endif %}">
-      <span class="icon">📅</span> Content Calendar
+      <span class="nav-label">Content Calendar</span>
     </a>
     <a href="/content-studio" class="nav-item {% if active_page == 'content_studio' %}active{% endif %}">
-      <span class="icon">🗂️</span> Content Studio
+      <span class="nav-label">Content Studio</span>
     </a>
     <a href="/editorial" class="nav-item {% if active_page == 'editorial' %}active{% endif %}">
-      <span class="icon">✍️</span> Editorial
+      <span class="nav-label">Editorial</span>
     </a>
     <a href="/publishing" class="nav-item {% if active_page == 'publishing' %}active{% endif %}">
-      <span class="icon">📤</span> Publishing
+      <span class="nav-label">Publishing</span>
     </a>
-    <a href="/seo" class="nav-item {% if active_page == 'seo' %}active{% endif %}">
-      <span class="icon">🔎</span> SEO
+    <a href="/os/content/seo" class="nav-item {% if active_page == 'os_content_seo' %}active{% endif %}">
+      <span class="nav-label">SEO</span>
+    </a>
+    <a href="/os/content/pipeline" class="nav-item {% if active_page == 'os_content_pipeline' %}active{% endif %}">
+      <span class="nav-label">Pipeline</span>
     </a>
     <a href="/pipeline" class="nav-item {% if active_page == 'pipeline' %}active{% endif %}">
-      <span class="icon">⚡</span> Run Pipeline
+      <span class="nav-label">Run Pipeline</span>
     </a>
-    <a href="/marketing" class="nav-item {% if active_page == 'marketing' %}active{% endif %}">
-      <span class="icon">📣</span> Marketing
-    </a>
-    <a href="/sales" class="nav-item {% if active_page == 'sales' %}active{% endif %}">
-      <span class="icon">🎯</span> Sales
-    </a>
-    <a href="/mcp" class="nav-item {% if active_page == 'mcp' %}active{% endif %}">
-      <span class="icon">🧠</span> MCP Hub
+    <a href="/analytics" class="nav-item {% if active_page == 'analytics' %}active{% endif %}">
+      <span class="nav-label">Analytics</span>
     </a>
       </div>
     </details>
   </div>
+
+  {% set operations_pages = ['operations', 'operations_approvals', 'operations_activity', 'operations_automations', 'operations_jobs', 'approvals', 'activity'] %}
+  <nav class="nav-section" aria-label="Operations">
+    <details class="nav-collapsed"{% if (active_page|default('')) in operations_pages %} open{% endif %}>
+      <summary>Operations</summary>
+      <div style="padding-top:4px">
+        <a href="/os/operations" class="nav-item {% if active_page == 'operations' %}active{% endif %}"><span class="nav-label">Overview</span></a>
+        <a href="/pending-approvals" class="nav-item {% if active_page == 'approvals' %}active{% endif %}"><span class="nav-label">Approvals</span></a>
+        <a href="/os/operations/automations" class="nav-item {% if active_page == 'operations_automations' %}active{% endif %}"><span class="nav-label">Workflows</span></a>
+        <a href="/os/operations/jobs" class="nav-item {% if active_page == 'operations_jobs' %}active{% endif %}"><span class="nav-label">Jobs</span></a>
+      </div>
+    </details>
+  </nav>
+
+  {% set agent_pages = ['agents', 'agents_runs', 'agents_capabilities', 'agents_evaluations', 'mcp'] %}
+  <nav class="nav-section" aria-label="Agents">
+    <details class="nav-collapsed"{% if (active_page|default('')) in agent_pages %} open{% endif %}>
+      <summary>Agents</summary>
+      <div style="padding-top:4px">
+        <a href="/os/agents" class="nav-item {% if active_page == 'agents' %}active{% endif %}"><span class="nav-label">Agent Hub</span></a>
+        <a href="/os/agents/runs" class="nav-item {% if active_page == 'agents_runs' %}active{% endif %}"><span class="nav-label">Runs</span></a>
+        <a href="/os/agents/capabilities" class="nav-item {% if active_page == 'agents_capabilities' %}active{% endif %}"><span class="nav-label">Capabilities</span></a>
+        <a href="/os/agents/evaluations" class="nav-item {% if active_page == 'agents_evaluations' %}active{% endif %}"><span class="nav-label">Evaluations</span></a>
+        <a href="/mcp" class="nav-item {% if active_page == 'mcp' %}active{% endif %}"><span class="nav-label">MCP Hub</span></a>
+      </div>
+    </details>
+  </nav>
+
+  {% set system_pages = ['system', 'system_integrations', 'system_governance', 'system_identity', 'system_tenant', 'system_health', 'system_settings', 'design_system'] %}
+  <nav class="nav-section" aria-label="System">
+    <details class="nav-collapsed"{% if (active_page|default('')) in system_pages %} open{% endif %}>
+      <summary>System</summary>
+      <div style="padding-top:4px">
+        <a href="/os/system" class="nav-item {% if active_page == 'system' %}active{% endif %}"><span class="nav-label">Overview</span></a>
+        <a href="/os/system/integrations" class="nav-item {% if active_page == 'system_integrations' %}active{% endif %}"><span class="nav-label">Integrations</span></a>
+        <a href="/os/system/governance" class="nav-item {% if active_page == 'system_governance' %}active{% endif %}"><span class="nav-label">Governance</span></a>
+        <a href="/os/system/identity" class="nav-item {% if active_page == 'system_identity' %}active{% endif %}"><span class="nav-label">Identity</span></a>
+        <a href="/os/system/tenant" class="nav-item {% if active_page == 'system_tenant' %}active{% endif %}"><span class="nav-label">Tenant</span></a>
+        <a href="/os/system/health" class="nav-item {% if active_page == 'system_health' %}active{% endif %}"><span class="nav-label">System Health</span></a>
+        <a href="/os/design-system" class="nav-item {% if active_page == 'design_system' %}active{% endif %}"><span class="nav-label">Design system</span></a>
+      </div>
+    </details>
+  </nav>
 
   <div class="sidebar-footer">
     {% if tenant is defined and tenant and tenant.organization_name %}
@@ -344,6 +544,7 @@
     {% endif %}
     Active week: <strong>{{ active_week or "—" }}</strong>
     {% if identity is defined and identity and identity.is_human %}
+    <div class="org-badge" data-testid="operator-context">{{ identity.display_name or identity.email or "Operator" }} · {{ identity.role or "member" }}</div>
     <form method="post" action="/logout" style="margin-top:10px">
       <button type="submit" class="btn btn-ghost btn-sm" data-testid="s1-logout">Sign out</button>
     </form>
@@ -360,19 +561,46 @@
       <div class="topbar-meta">{% block topbar_meta %}Unified founder visibility &amp; control{% endblock %}</div>
     </div>
     <div class="topbar-right">
-      <button type="button" class="btn btn-ghost btn-sm mobile-nav-toggle" onclick="document.querySelector('.sidebar').classList.toggle('open')" aria-label="Menu">☰</button>
+      {% if tenant is defined and tenant and tenant.organization_name %}
+      <span class="pill gray" data-testid="tenant-context">{{ tenant.organization_name }}</span>
+      {% elif tenant is defined %}
+      <span class="pill amber" data-testid="tenant-context">Workspace unknown</span>
+      {% endif %}
+      {% if identity is defined and identity and identity.is_human %}
+      <span class="os-operator" data-testid="operator-chip">{{ identity.display_name or identity.email or "Operator" }} <span class="os-operator-role">{{ identity.role or "member" }}</span></span>
+      {% endif %}
+      <button type="button" class="btn btn-ghost btn-sm" id="os-jump" aria-haspopup="dialog" aria-controls="os-palette">Jump</button>
+      <span class="pill gray" data-testid="env-indicator">internal-beta</span>
+      <button type="button" class="btn btn-ghost btn-sm" id="os-notifications" aria-haspopup="dialog" aria-controls="os-notice">Notifications</button>
+      <button type="button" class="btn btn-ghost btn-sm mobile-nav-toggle" onclick="document.querySelector('.sidebar').classList.toggle('open')" aria-label="Menu">Menu</button>
       {% block topbar_right %}{% endblock %}
     </div>
   </div>
   {% endblock %}
 
-  <div class="page">
+  <div class="page" id="main-content">
     {% block content %}{% endblock %}
   </div>
 </div>
 
 <!-- ░ Toast ──────────────────────────────────────────────────────────────── -->
 <div id="toast"></div>
+<div class="os-palette" id="os-palette" hidden>
+  <div class="os-palette-panel" role="dialog" aria-modal="true" aria-labelledby="os-palette-title">
+    <h2 id="os-palette-title">Jump to a workspace</h2>
+    <p class="os-purpose">Navigation only. Record search is not available.</p>
+    <input id="os-palette-query" type="search" aria-label="Filter workspaces" placeholder="Filter workspaces" />
+    <ul class="os-palette-list" id="os-palette-list"></ul>
+    <button type="button" class="btn btn-ghost btn-sm" id="os-palette-close">Close</button>
+  </div>
+</div>
+<div class="os-notice" id="os-notice" hidden>
+  <div class="os-notice-panel" role="dialog" aria-modal="true" aria-labelledby="os-notice-title">
+    <h2 id="os-notice-title">Notifications</h2>
+    <p>API_GAP: no notification feed. Nothing was substituted.</p>
+    <button type="button" class="btn btn-ghost btn-sm" id="os-notice-close">Close</button>
+  </div>
+</div>
 
 <script>
 function showToast(msg, ok=true) {
@@ -388,6 +616,97 @@ document.querySelectorAll('details[data-persistent="true"]').forEach(function (e
     if (!el.open) el.open = true;
   });
 });
+(function () {
+  var links = [
+    ['Founder Home', '/home'],
+    ['Command Center', '/command'],
+    ['Global Activity', '/activity'],
+    ['Revenue', '/os/revenue'],
+    ['Prospecting', '/os/revenue/prospecting'],
+    ['Contacts', '/os/revenue/contacts'],
+    ['Companies', '/os/revenue/companies'],
+    ['Deals', '/os/revenue/deals'],
+    ['Pipeline', '/os/revenue/pipeline'],
+    ['Marketing', '/os/marketing'],
+    ['Content', '/os/content'],
+    ['Content SEO', '/os/content/seo'],
+    ['Content pipeline', '/os/content/pipeline'],
+    ['Approvals', '/pending-approvals'],
+    ['Agents', '/os/agents'],
+    ['System', '/os/system'],
+    ['Design system', '/os/design-system']
+  ];
+  var palette = document.getElementById('os-palette');
+  var notice = document.getElementById('os-notice');
+  var list = document.getElementById('os-palette-list');
+  var query = document.getElementById('os-palette-query');
+  function render(filter) {
+    var needle = (filter || '').toLowerCase();
+    list.innerHTML = '';
+    links.forEach(function (item) {
+      if (needle && item[0].toLowerCase().indexOf(needle) === -1) return;
+      var li = document.createElement('li');
+      var a = document.createElement('a');
+      a.href = item[1];
+      a.textContent = item[0];
+      li.appendChild(a);
+      list.appendChild(li);
+    });
+  }
+  function openPalette() {
+    palette.hidden = false;
+    render('');
+    query.value = '';
+    query.focus();
+  }
+  function closePalette() { palette.hidden = true; }
+  document.getElementById('os-jump').addEventListener('click', openPalette);
+  document.getElementById('os-palette-close').addEventListener('click', closePalette);
+  query.addEventListener('input', function () { render(query.value); });
+  document.getElementById('os-notifications').addEventListener('click', function () { notice.hidden = false; });
+  document.getElementById('os-notice-close').addEventListener('click', function () { notice.hidden = true; });
+  document.addEventListener('keydown', function (event) {
+    var meta = event.metaKey || event.ctrlKey;
+    if (meta && event.key.toLowerCase() === 'k') {
+      event.preventDefault();
+      openPalette();
+    }
+    if (event.key === 'Escape') {
+      closePalette();
+      notice.hidden = true;
+    }
+  });
+  var toggle = document.getElementById('sidebar-toggle');
+  function applyCollapsed(collapsed) {
+    document.body.classList.toggle('sidebar-is-collapsed', collapsed);
+    toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    toggle.textContent = collapsed ? 'Expand' : 'Collapse';
+  }
+  applyCollapsed(window.localStorage.getItem('founder-os-sidebar') === 'collapsed');
+  toggle.addEventListener('click', function () {
+    var next = !document.body.classList.contains('sidebar-is-collapsed');
+    applyCollapsed(next);
+    window.localStorage.setItem('founder-os-sidebar', next ? 'collapsed' : 'open');
+  });
+  document.querySelectorAll('details.nav-collapsed').forEach(function (details) {
+    var summary = details.querySelector('summary');
+    var key = 'founder-os-nav-' + (summary ? summary.textContent.trim() : '');
+    var hasCurrent = !!details.querySelector('.nav-item.active, [data-current-section="true"]');
+    if (!hasCurrent && window.localStorage.getItem(key) === 'closed') {
+      details.open = false;
+    }
+    if (!hasCurrent && window.localStorage.getItem(key) === 'open') {
+      details.open = true;
+    }
+    details.addEventListener('toggle', function () {
+      if (details.open && details.querySelector('.nav-item.active, [data-current-section="true"]')) {
+        window.localStorage.setItem(key, 'open');
+        return;
+      }
+      window.localStorage.setItem(key, details.open ? 'open' : 'closed');
+    });
+  });
+})();
 
 async function apiPost(url, body) {
   const r = await fetch(url, {
