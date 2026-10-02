@@ -14,6 +14,7 @@ from src.tools import publishing_engine as pe
 from src.tools.website_engine.provider import WebsitePublicationRequest
 from src.tools.website_engine.publish_result import success_result
 from src.tools.website_engine.static_provider import StaticWebsiteProvider
+from tests.attempt_ledger import bind_attempt_ledger
 from tests.test_static_provider import _request
 
 
@@ -47,6 +48,7 @@ def publishing_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str,
     monkeypatch.setattr(pe, "JOBS_JSONL", publishing / "jobs.jsonl")
     monkeypatch.setattr(pe, "AUDIT_JSONL", publishing / "audit.jsonl")
     monkeypatch.setattr(pe, "JOBS_DIR", publishing / "jobs")
+    bind_attempt_ledger(monkeypatch, tmp_path, pe)
     return {"tmp_path": tmp_path}
 
 

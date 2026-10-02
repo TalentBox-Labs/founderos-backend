@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from src.tools import editorial_approval as ea
 from src.tools import publishing_engine as pe
+from tests.attempt_ledger import bind_attempt_ledger
 
 
 def _create_job(**kwargs: Any) -> dict[str, Any]:
@@ -57,6 +58,7 @@ def publishing_env(
     monkeypatch.setattr(pe, "JOBS_JSONL", publishing / "jobs.jsonl")
     monkeypatch.setattr(pe, "AUDIT_JSONL", publishing / "audit.jsonl")
     monkeypatch.setattr(pe, "JOBS_DIR", publishing / "jobs")
+    bind_attempt_ledger(monkeypatch, tmp_path, pe)
 
     return {"tmp_path": tmp_path, "publishing": publishing, "decisions": decisions}
 

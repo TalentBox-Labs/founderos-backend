@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 import json
-import sqlite3
 import threading
 from pathlib import Path
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import IntegrityError
 
+from revenue_os.models.publication_attempt import PublicationAttempt
 from src.tools import editorial_approval as ea
+from tests.attempt_ledger import bind_attempt_ledger
 from src.tools import publishing_engine as pe
 from src.tools.content_ops_readiness import autonomous_publication_ready
 from src.ui.content_ops_beta.presenter import present_content_ops_read
@@ -50,6 +52,7 @@ def publishing_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str,
     monkeypatch.setattr(pe, "JOBS_JSONL", publishing / "jobs.jsonl")
     monkeypatch.setattr(pe, "AUDIT_JSONL", publishing / "audit.jsonl")
     monkeypatch.setattr(pe, "JOBS_DIR", publishing / "jobs")
+    bind_attempt_ledger(monkeypatch, tmp_path, pe)
     return {"tmp_path": tmp_path, "publishing": publishing}
 
 
@@ -62,14 +65,12 @@ def _job(**kwargs: Any) -> dict[str, Any]:
 
 
 def _attempt_count(publishing: Path) -> int:
-    database = publishing / pe.ATTEMPTS_DB_NAME
-    if not database.is_file():
-        return 0
-    conn = sqlite3.connect(database)
+    assert not (publishing / pe.ATTEMPTS_DB_NAME).exists()
+    db = pe.SessionLocal()
     try:
-        return int(conn.execute("SELECT COUNT(*) FROM publication_attempts").fetchone()[0])
+        return int(db.query(PublicationAttempt).count())
     finally:
-        conn.close()
+        db.close()
 
 
 def test_same_identity_replays_one_job(publishing_env: dict[str, Any]) -> None:
@@ -198,25 +199,88 @@ def test_database_primary_key_rejects_a_second_insert(
     publishing_env: dict[str, Any],
 ) -> None:
     _job()
-    database = publishing_env["publishing"] / pe.ATTEMPTS_DB_NAME
-    conn = sqlite3.connect(database)
+    db = pe.SessionLocal()
     try:
-        row = conn.execute(
-            "SELECT tenant_id, content_id, content_version, channel, destination, job_id, created_at "
-            "FROM publication_attempts"
-        ).fetchone()
-        with pytest.raises(sqlite3.IntegrityError):
-            conn.execute(
-                """
-                INSERT INTO publication_attempts (
-                    tenant_id, content_id, content_version, channel,
-                    destination, job_id, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (*row[:5], "pub_other", row[6]),
+        row = db.query(PublicationAttempt).one()
+        db.expunge(row)
+        db.add(
+            PublicationAttempt(
+                tenant_id=row.tenant_id,
+                content_id=row.content_id,
+                content_version=row.content_version,
+                channel=row.channel,
+                destination=row.destination,
+                job_id="pub_other",
+                created_at=row.created_at,
+                requested_by=row.requested_by,
+                state=row.state,
+                publication_truth=row.publication_truth,
+                verification_status=row.verification_status,
+                remote_write_outstanding=False,
             )
+        )
+        with pytest.raises(IntegrityError):
+            db.commit()
     finally:
-        conn.close()
+        db.rollback()
+        db.close()
+    assert _attempt_count(publishing_env["publishing"]) == 1
+
+
+def test_attempt_survives_snapshot_loss(publishing_env: dict[str, Any]) -> None:
+    first = _job()
+    for path in (publishing_env["publishing"] / "jobs").glob("*.json"):
+        path.unlink()
+    replay = _job()
+    assert replay["job_id"] == first["job_id"]
+    assert replay["idempotent"] is True
+    assert replay["state"] == pe.STATE_PUBLISH_PENDING
+    assert _attempt_count(publishing_env["publishing"]) == 1
+
+
+def test_dropped_remote_call_cannot_retry_after_snapshot_loss(
+    publishing_env: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = {"n": 0}
+
+    def _remote(job: dict[str, Any]) -> dict[str, Any]:
+        calls["n"] += 1
+        raise RuntimeError("response lost")
+
+    monkeypatch.setitem(pe.ADAPTERS, "website", _remote)
+    created = _job()
+    with pytest.raises(RuntimeError, match="response lost"):
+        pe.manual_publish(created["job_id"], requested_by="Human A")
+    for path in (publishing_env["publishing"] / "jobs").glob("*.json"):
+        path.unlink()
+    with pytest.raises(ValueError, match="unknown"):
+        pe.manual_publish(created["job_id"], requested_by="Human A")
+    assert calls["n"] == 1
+    assert _attempt_count(publishing_env["publishing"]) == 1
+
+
+def test_unknown_remote_survives_snapshot_loss(
+    publishing_env: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = {"n": 0}
+
+    def _remote(job: dict[str, Any]) -> dict[str, Any]:
+        calls["n"] += 1
+        return {
+            "ok": False,
+            "remote_request_dispatched": True,
+            "remote_outcome": "timeout",
+        }
+
+    monkeypatch.setitem(pe.ADAPTERS, "website", _remote)
+    created = _job()
+    pe.manual_publish(created["job_id"], requested_by="Human A")
+    for path in (publishing_env["publishing"] / "jobs").glob("*.json"):
+        path.unlink()
+    with pytest.raises(ValueError, match="unknown"):
+        pe.retry_job(created["job_id"], requested_by="Human A")
+    assert calls["n"] == 1
+    assert _attempt_count(publishing_env["publishing"]) == 1
 
 
 def test_api_ignores_client_organization(
