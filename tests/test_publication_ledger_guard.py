@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import sqlite3
+import subprocess
 import threading
 from pathlib import Path
 from typing import Any
@@ -260,6 +262,62 @@ def test_sentinel_api_is_hidden_from_the_publication_queue(
     )
     assert rejected.status_code == 400
     assert _attempt_count(ledger_env) == 1
+
+
+def test_image_start_runs_the_guard_before_the_server() -> None:
+    dockerfile = Path("Dockerfile").read_text(encoding="utf-8")
+    assert 'CMD ["sh", "scripts/publication_admission_start.sh"]' in dockerfile
+    script = Path("scripts/publication_admission_start.sh").read_text(encoding="utf-8")
+    assert script.index("publication_ledger_guard") < script.index("exec uvicorn")
+
+
+def test_admission_start_does_not_exec_the_server_when_the_guard_denies(
+    tmp_path: Path,
+) -> None:
+    _assert_admission_start(tmp_path, guard_status=1, server_runs=False)
+
+
+def test_admission_start_execs_the_server_when_the_guard_allows(tmp_path: Path) -> None:
+    _assert_admission_start(tmp_path, guard_status=0, server_runs=True)
+
+
+def test_tree_without_the_start_script_cannot_become_the_process(tmp_path: Path) -> None:
+    completed = subprocess.run(
+        ["sh", "scripts/publication_admission_start.sh"],
+        cwd=tmp_path,
+        capture_output=True,
+        check=False,
+    )
+    assert completed.returncode != 0
+
+
+def _assert_admission_start(tmp_path: Path, *, guard_status: int, server_runs: bool) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    marker = tmp_path / "server-started"
+    python = bin_dir / "python"
+    uvicorn = bin_dir / "uvicorn"
+    python.write_text(f"#!/bin/sh\nexit {guard_status}\n", encoding="utf-8")
+    uvicorn.write_text(
+        f"#!/bin/sh\ntouch {marker}\nexit 0\n",
+        encoding="utf-8",
+    )
+    python.chmod(0o755)
+    uvicorn.chmod(0o755)
+    env = os.environ.copy()
+    env["PATH"] = f"{bin_dir}{os.pathsep}{env.get('PATH', '')}"
+    completed = subprocess.run(
+        ["sh", "scripts/publication_admission_start.sh"],
+        cwd=Path(__file__).resolve().parents[1],
+        env=env,
+        capture_output=True,
+        check=False,
+    )
+    assert marker.exists() is server_runs
+    if server_runs:
+        assert completed.returncode == 0
+    else:
+        assert completed.returncode != 0
 
 
 def test_health_ledger_reports_the_catalog(cms_client: TestClient) -> None:
