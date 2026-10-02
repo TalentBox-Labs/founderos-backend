@@ -30,6 +30,10 @@ from revenue_os.services.go_to_market_orchestrator import (
 )
 from revenue_os.services.orchestration_runtime import backend_status
 from src.tools import publishing_engine as pe
+from src.tools.publication_ledger_guard import (
+    LedgerState,
+    inspect_publication_ledger_contract,
+)
 from src.tools.seo_engine import analyze_technical_site
 from runner_api_routers.utils import (
     _last_run_summary,
@@ -1117,6 +1121,31 @@ def health_ready() -> JSONResponse:
             "service": "WorkCrew CMS OS",
             "check": "readiness",
             "database": "ok",
+        },
+    )
+
+
+@router.get("/health/ledger")
+def health_ledger() -> JSONResponse:
+    """Publication-ledger compatibility. Categorical catalog fields only."""
+    try:
+        contract = inspect_publication_ledger_contract()
+    except Exception:
+        contract = {
+            "ledger_state": LedgerState.UNKNOWN.value,
+            "publication_access": "DENY",
+            "table_present": False,
+            "sqlite_authority": False,
+            "catalog_source": "unavailable",
+        }
+    status_code = 200 if contract.get("publication_access") == "ALLOW" else 503
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "status": "ok" if status_code == 200 else "unavailable",
+            "service": "WorkCrew CMS OS",
+            "check": "publication_ledger",
+            **contract,
         },
     )
 

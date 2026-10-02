@@ -31,6 +31,17 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 from revenue_os.database import SessionLocal
 from revenue_os.models.publication_attempt import PublicationAttempt
 from src.tools import editorial_approval as ea
+from src.tools.publication_ledger_guard import (
+    ATTEMPT_CLASS_INERT_SENTINEL,
+    ATTEMPT_CLASS_PUBLICATION,
+    SENTINEL_CHANNEL,
+    SENTINEL_CONTENT_ID,
+    SENTINEL_CONTENT_VERSION,
+    SENTINEL_DESTINATION,
+    SENTINEL_STATE,
+    SENTINEL_TRUTH,
+    require_publication_ledger,
+)
 from src.tools import publication_truth as publication_truth
 from src.tools.runtime_paths import REPO_ROOT
 
@@ -482,6 +493,8 @@ def _overlay_attempt(job: dict[str, Any], row: PublicationAttempt) -> dict[str, 
     job["publication_truth"] = row.publication_truth
     job["verification_status"] = row.verification_status
     job["remote_write_outstanding"] = bool(row.remote_write_outstanding)
+    job["attempt_class"] = row.attempt_class
+    job["remote_publishable"] = row.attempt_class != ATTEMPT_CLASS_INERT_SENTINEL
     job["tenant_id"] = row.tenant_id
     job["content_version"] = row.content_version
     job["destination"] = row.destination
@@ -519,6 +532,9 @@ def _job_from_attempt(row: PublicationAttempt) -> dict[str, Any]:
         "publication_truth": row.publication_truth,
         "verification_status": row.verification_status,
         "remote_write_outstanding": bool(row.remote_write_outstanding),
+        "attempt_class": row.attempt_class,
+        "remote_publishable": row.attempt_class != ATTEMPT_CLASS_INERT_SENTINEL,
+        "adapter_call_count": 0,
         "cancelled": row.state == STATE_CANCELLED,
         "orchestration_only": True,
         "website_engine": False,
@@ -590,6 +606,7 @@ def create_publish_job(
         raise PermissionError(
             "Human requester required. AI/automation cannot create publish jobs."
         )
+    require_publication_ledger(SessionLocal)
     tenant = _normalize_tenant_id(tenant_id)
     cid = normalize_content_id(content_id)
     ch = normalize_channel(channel)
@@ -648,6 +665,8 @@ def create_publish_job(
         "content_version": content_version,
         "destination": destination,
         "attempt_key": attempt_key,
+        "attempt_class": ATTEMPT_CLASS_PUBLICATION,
+        "remote_publishable": True,
         "idempotent": False,
     }
     last_locked: OperationalError | None = None
@@ -670,6 +689,7 @@ def create_publish_job(
                     publication_truth=publication_truth.TRUTH_UNPROVEN,
                     verification_status=publication_truth.TRUTH_UNPROVEN,
                     remote_write_outstanding=False,
+                    attempt_class=ATTEMPT_CLASS_PUBLICATION,
                 )
             )
             db.commit()
@@ -710,6 +730,130 @@ def create_publish_job(
     if last_locked is not None:
         raise last_locked
     raise LookupError("Canonical publication attempt was not stored")
+
+
+def create_inert_sentinel_attempt(
+    *,
+    requested_by: str,
+    tenant_id: str,
+) -> dict[str, Any]:
+    """Create the one inert durability sentinel, or replay it.
+
+    Identity is fixed by the server. The row uses the same uniqueness
+    transaction as a publication attempt and is classified ``inert_sentinel``.
+    No filesystem cache is written, and no channel adapter is selected.
+    """
+    if not is_human_requester(requested_by):
+        raise PermissionError(
+            "Human requester required. AI/automation cannot create publish jobs."
+        )
+    require_publication_ledger(SessionLocal)
+    tenant = _normalize_tenant_id(tenant_id)
+    attempt_key = publication_attempt_key(
+        tenant_id=tenant,
+        content_id=SENTINEL_CONTENT_ID,
+        content_version=SENTINEL_CONTENT_VERSION,
+        channel=SENTINEL_CHANNEL,
+        destination=SENTINEL_DESTINATION,
+    )
+    job_id = f"pub_{attempt_key[:24]}"
+    now = utc_now_iso()
+    job: dict[str, Any] = {
+        "schema_version": SCHEMA_VERSION,
+        "job_id": job_id,
+        "bundle_id": SENTINEL_CONTENT_ID,
+        "channel": SENTINEL_CHANNEL,
+        "channel_owner": "",
+        "state": SENTINEL_STATE,
+        "state_history": [],
+        "requested_by": requested_by.strip(),
+        "notes": "",
+        "created_at": now,
+        "updated_at": now,
+        "retry_count": 0,
+        "errors": [],
+        "editorial_decision_id": None,
+        "editorial_phase": None,
+        "bundle": None,
+        "adapter_result": None,
+        "publication_truth": SENTINEL_TRUTH,
+        "verification_status": SENTINEL_TRUTH,
+        "remote_write_outstanding": False,
+        "attempt_class": ATTEMPT_CLASS_INERT_SENTINEL,
+        "remote_publishable": False,
+        "adapter_call_count": 0,
+        "cancelled": False,
+        "orchestration_only": True,
+        "website_engine": False,
+        "social_engine": False,
+        "campaign_engine": False,
+        "tenant_id": tenant,
+        "content_version": SENTINEL_CONTENT_VERSION,
+        "destination": SENTINEL_DESTINATION,
+        "attempt_key": attempt_key,
+        "idempotent": False,
+    }
+    last_locked: OperationalError | None = None
+    for _attempt in range(6):
+        _ensure_attempt_table()
+        db = SessionLocal()
+        try:
+            _sqlite_busy_timeout(db)
+            db.add(
+                PublicationAttempt(
+                    tenant_id=tenant,
+                    content_id=SENTINEL_CONTENT_ID,
+                    content_version=SENTINEL_CONTENT_VERSION,
+                    channel=SENTINEL_CHANNEL,
+                    destination=SENTINEL_DESTINATION,
+                    job_id=job_id,
+                    created_at=now,
+                    requested_by=requested_by.strip(),
+                    state=SENTINEL_STATE,
+                    publication_truth=SENTINEL_TRUTH,
+                    verification_status=SENTINEL_TRUTH,
+                    remote_write_outstanding=False,
+                    attempt_class=ATTEMPT_CLASS_INERT_SENTINEL,
+                )
+            )
+            db.commit()
+            return job
+        except IntegrityError:
+            db.rollback()
+            existing = _load_attempt_by_identity(
+                tenant_id=tenant,
+                content_id=SENTINEL_CONTENT_ID,
+                content_version=SENTINEL_CONTENT_VERSION,
+                channel=SENTINEL_CHANNEL,
+                destination=SENTINEL_DESTINATION,
+            )
+            if existing is None:
+                raise LookupError("Canonical publication attempt could not be read")
+            if existing.attempt_class != ATTEMPT_CLASS_INERT_SENTINEL:
+                raise LookupError("Sentinel identity is already a publication attempt")
+            replay = _return_existing_attempt(existing.job_id)
+            replay["adapter_call_count"] = 0
+            replay["remote_publishable"] = False
+            return replay
+        except OperationalError as exc:
+            db.rollback()
+            last_locked = exc
+            if "locked" not in str(exc).lower():
+                raise
+            time.sleep(0.05)
+        finally:
+            db.close()
+    if last_locked is not None:
+        raise last_locked
+    raise LookupError("Canonical publication attempt was not stored")
+
+
+def _refuse_inert_sentinel(job: dict[str, Any]) -> None:
+    """Sentinel rows are rejected before any adapter lookup."""
+    if job.get("attempt_class") == ATTEMPT_CLASS_INERT_SENTINEL or (
+        job.get("publication_truth") == SENTINEL_TRUTH
+    ):
+        raise ValueError("Inert sentinel attempts cannot invoke a publication adapter")
 
 
 def _transition(
@@ -832,9 +976,11 @@ def manual_publish(job_id: str, *, requested_by: str, notes: str = "") -> dict[s
         raise PermissionError(
             "Human requester required. AI/automation cannot publish."
         )
+    require_publication_ledger(SessionLocal)
     job = get_job(job_id)
     if job is None:
         raise FileNotFoundError(f"Publish job not found: {job_id}")
+    _refuse_inert_sentinel(job)
     _refuse_unknown_remote_rewrite(job)
 
     state = job.get("state")
@@ -891,9 +1037,11 @@ def manual_publish(job_id: str, *, requested_by: str, notes: str = "") -> dict[s
 def retry_job(job_id: str, *, requested_by: str, notes: str = "") -> dict[str, Any]:
     if not is_human_requester(requested_by):
         raise PermissionError("Human requester required for retry.")
+    require_publication_ledger(SessionLocal)
     job = get_job(job_id)
     if job is None:
         raise FileNotFoundError(f"Publish job not found: {job_id}")
+    _refuse_inert_sentinel(job)
     _refuse_unknown_remote_rewrite(job)
     state = job.get("state")
     if state not in {STATE_FAILED, STATE_RETRY}:
@@ -914,9 +1062,11 @@ def retry_job(job_id: str, *, requested_by: str, notes: str = "") -> dict[str, A
 def cancel_job(job_id: str, *, requested_by: str, notes: str = "") -> dict[str, Any]:
     if not is_human_requester(requested_by):
         raise PermissionError("Human requester required for cancel.")
+    require_publication_ledger(SessionLocal)
     job = get_job(job_id)
     if job is None:
         raise FileNotFoundError(f"Publish job not found: {job_id}")
+    _refuse_inert_sentinel(job)
     state = job.get("state")
     if state in {STATE_PUBLISHED, STATE_CANCELLED, STATE_PUBLISHING}:
         raise ValueError(f"Invalid transition: cannot cancel from state {state!r}")
@@ -930,7 +1080,7 @@ def cancel_job(job_id: str, *, requested_by: str, notes: str = "") -> dict[str, 
 
 
 def list_queue(*, include_terminal: bool = False) -> list[dict[str, Any]]:
-    jobs = load_all_jobs()
+    jobs = [j for j in load_all_jobs() if j.get("attempt_class") != ATTEMPT_CLASS_INERT_SENTINEL]
     if include_terminal:
         return jobs
     return [j for j in jobs if j.get("state") in QUEUE_STATES or j.get("state") == STATE_PUBLISH_PENDING]
