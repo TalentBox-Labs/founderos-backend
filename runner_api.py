@@ -450,6 +450,10 @@ def _migrate_connector_credentials_tenant(conn, inspector) -> None:  # noqa: ANN
 async def _startup_persistence_and_heartbeat() -> None:
     """Create any missing tables, then start the autonomous heartbeat."""
     from revenue_os.db_url import redact_database_url, sanitize_exception_for_log
+    from src.tools.publication_ledger_guard import (
+        LedgerState,
+        bootstrap_publication_ledger,
+    )
 
     try:
         import revenue_os.models  # noqa: F401 - registers all tables on Base.metadata
@@ -483,6 +487,21 @@ async def _startup_persistence_and_heartbeat() -> None:
         raise RuntimeError(
             "FATAL: database soft-migration failed. "
             "Refusing to continue with an incomplete schema."
+        ) from None
+
+    try:
+        ledger_state = bootstrap_publication_ledger()
+        if ledger_state is not LedgerState.COMPATIBLE:
+            raise RuntimeError(ledger_state.value)
+        logger.info("Publication ledger compatibility sealed (%s)", ledger_state.value)
+    except Exception as e:
+        logger.error(
+            "Publication ledger bootstrap failed (fail-closed): type=%s",
+            sanitize_exception_for_log(e),
+        )
+        raise RuntimeError(
+            "FATAL: publication ledger compatibility is not proven. "
+            "Refusing to continue."
         ) from None
 
     try:

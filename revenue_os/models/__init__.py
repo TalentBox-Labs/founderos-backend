@@ -67,6 +67,7 @@ from revenue_os.models.marketing import (
 )
 from revenue_os.models.session_revocation import SessionRevocation
 from revenue_os.models.publication_attempt import PublicationAttempt
+from revenue_os.models.publication_ledger_compatibility import PublicationLedgerCompatibility
 
 __all__ = [
     "Company",
@@ -126,4 +127,5 @@ __all__ = [
     "MarketingSpendRecord",
     "SessionRevocation",
     "PublicationAttempt",
+    "PublicationLedgerCompatibility",
 ]

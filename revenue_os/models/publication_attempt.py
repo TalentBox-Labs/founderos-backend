@@ -7,7 +7,7 @@ same attempt, not a second ledger.
 
 from __future__ import annotations
 
-from sqlalchemy import Boolean, Column, String, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, Column, String, UniqueConstraint
 
 from revenue_os.models.base import Base
 
@@ -18,6 +18,11 @@ class PublicationAttempt(Base):
     __tablename__ = "publication_attempts"
     __table_args__ = (
         UniqueConstraint("job_id", name="uq_publication_attempts_job_id"),
+        CheckConstraint(
+            "(attempt_class <> 'inert_sentinel') OR "
+            "((NOT remote_write_outstanding) AND publication_truth = 'inert_non_publishable')",
+            name="ck_publication_attempts_inert_remote",
+        ),
     )
 
     tenant_id = Column(String(80), primary_key=True, nullable=False)
@@ -32,3 +37,9 @@ class PublicationAttempt(Base):
     publication_truth = Column(String(40), nullable=False)
     verification_status = Column(String(40), nullable=False)
     remote_write_outstanding = Column(Boolean, nullable=False, default=False)
+    attempt_class = Column(
+        String(40),
+        nullable=False,
+        default="publication",
+        server_default="publication",
+    )

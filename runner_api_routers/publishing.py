@@ -14,6 +14,14 @@ from pydantic import BaseModel, Field
 from revenue_os.services.content_ops_authority import content_ops_human_actor
 from runner_api_routers.utils import require_human_or_api_key
 from src.tools import publishing_engine as pe
+from src.tools.publication_ledger_guard import (
+    SENTINEL_CHANNEL,
+    SENTINEL_CONTENT_ID,
+    SENTINEL_CONTENT_VERSION,
+    SENTINEL_DESTINATION,
+    PublicationLedgerDenied,
+    require_publication_ledger,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/publishing", tags=["publishing"])
@@ -75,6 +83,56 @@ def list_publishing_jobs(
     }
 
 
+def _ledger_denied(exc: PublicationLedgerDenied) -> HTTPException:
+    return HTTPException(status_code=503, detail=exc.state.value)
+
+
+@router.post("/sentinel", tags=["publishing"])
+def create_publication_sentinel(
+    body: PublishActionRequest,
+    request: Request,
+    organization_id: str = Depends(require_human_or_api_key),
+) -> dict[str, Any]:
+    """Create or replay the inert durability sentinel. No adapter is selected."""
+    actor = content_ops_human_actor(request, body.requested_by)
+    try:
+        job = pe.create_inert_sentinel_attempt(
+            requested_by=actor,
+            tenant_id=organization_id,
+        )
+    except PublicationLedgerDenied as exc:
+        raise _ledger_denied(exc) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _job_view(job)
+
+
+@router.get("/sentinel", tags=["publishing"])
+def get_publication_sentinel(
+    organization_id: str = Depends(require_human_or_api_key),
+) -> dict[str, Any]:
+    """Read the tenant sentinel from the durable ledger."""
+    try:
+        require_publication_ledger(pe.SessionLocal)
+    except PublicationLedgerDenied as exc:
+        raise _ledger_denied(exc) from exc
+    row = pe._load_attempt_by_identity(
+        tenant_id=organization_id,
+        content_id=SENTINEL_CONTENT_ID,
+        content_version=SENTINEL_CONTENT_VERSION,
+        channel=SENTINEL_CHANNEL,
+        destination=SENTINEL_DESTINATION,
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Inert sentinel not found")
+    job = pe.get_job(row.job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Inert sentinel not found")
+    return _job_view(job)
+
+
 @router.post("/jobs", tags=["publishing"])
 def create_publishing_job(
     body: CreatePublishJobRequest,
@@ -101,6 +159,8 @@ def create_publishing_job(
         )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except PublicationLedgerDenied as exc:
+        raise _ledger_denied(exc) from exc
     except LookupError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except ValueError as exc:
@@ -138,6 +198,8 @@ def post_publishing_publish(
         )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except PublicationLedgerDenied as exc:
+        raise _ledger_denied(exc) from exc
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except LookupError as exc:
@@ -165,6 +227,8 @@ def post_publishing_retry(
         )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except PublicationLedgerDenied as exc:
+        raise _ledger_denied(exc) from exc
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
@@ -190,6 +254,8 @@ def post_publishing_cancel(
         )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except PublicationLedgerDenied as exc:
+        raise _ledger_denied(exc) from exc
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
