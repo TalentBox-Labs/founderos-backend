@@ -66,12 +66,21 @@ def test_shell_routes_render_without_mock_fallback(cms_client: TestClient) -> No
         assert 'data-source="mock"' not in html, path
         assert "Acme" not in html, path
         assert 'data-testid="enterprise-nav"' in html
-        assert 'href="/command"' in html
-        assert 'href="/demand"' in html
+        assert 'href="/home"' in html
+        assert 'href="/os/revenue/contacts"' in html
+        assert 'href="/os/marketing/campaigns"' in html
+        assert 'href="/os/content"' in html
         assert 'href="/pending-approvals"' in html
-        assert 'href="/activity"' in html
-        assert 'href="/operator"' in html
-        assert "Command Center" in html
+        assert 'href="/os/system"' in html
+        sidebar = html.split("<aside", 1)[1].split("</aside>", 1)[0]
+        assert 'aria-label="Growth"' in sidebar
+        assert 'aria-label="Sales"' in sidebar
+        assert 'aria-label="Revenue"' not in sidebar
+        assert 'aria-label="Marketing"' not in sidebar
+        assert "Command Center" not in sidebar
+        assert "Executive Cockpit" not in sidebar
+        assert "Dashboard" not in sidebar
+        assert "MCP Hub" not in sidebar
         assert 'data-testid="env-indicator"' in html
 
 
@@ -148,6 +157,39 @@ def test_content_pipeline_does_not_start_a_run(cms_client: TestClient) -> None:
     assert "does not start a run" in html
     assert "Verified published" in html
     assert "Publication truth" in html
+
+
+def test_home_empty_command_read_stays_a_page(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "src.ui.enterprise.compose.build_command_center_snapshot",
+        lambda **_kwargs: {
+            "state": "ok",
+            "errors": [],
+            "decision_loop": {"requires_founder": 0},
+            "pending_approval_count": 0,
+            "pending_demand_count": 0,
+            "agent_orchestration": {"counts": {"blocked": 0}},
+            "decision_items": [],
+            "pipeline": {"contacts": 0, "deals": 0},
+            "recent_activity": [],
+        },
+    )
+    monkeypatch.setattr(
+        "src.ui.enterprise.compose._current_week_publication",
+        lambda: {"ok": True, "state": "empty", "proven": False, "detail": "No active week"},
+    )
+    view = compose_surface(
+        "home",
+        organization_id="org-1",
+        identity={"is_human": True, "principal_kind": "HUMAN"},
+        tenant={"organization_name": "Founder Organization"},
+        active_week="—",
+    )
+    assert view["read_state"] == "ok"
+    assert any(alert["title"] == "Decision queue empty" for alert in view["alerts"])
+    publication = next(kpi for kpi in view["kpis"] if kpi["label"] == "Publication truth")
+    assert publication["value"] == "unproven"
+    assert view["primary_action"]["href"] == "/os/revenue"
 
 
 def test_compose_without_organization_does_not_invent_contacts() -> None:

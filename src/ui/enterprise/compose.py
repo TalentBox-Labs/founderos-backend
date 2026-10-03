@@ -279,11 +279,7 @@ def _alert(tone: str, title: str, body: str) -> dict[str, str]:
 
 
 def _home_tabs() -> list[dict[str, str]]:
-    return [
-        {"id": "home", "label": "Founder Home", "href": "/home"},
-        {"id": "command", "label": "Command Center", "href": "/command"},
-        {"id": "activity", "label": "Global Activity", "href": "/activity"},
-    ]
+    return []
 
 
 def _revenue_tabs(current_href_id: str) -> list[dict[str, str]]:
@@ -318,9 +314,6 @@ def _content_tabs() -> list[dict[str, str]]:
         {"id": "studio", "label": "Studio", "href": "/os/content/studio"},
         {"id": "editorial", "label": "Editorial", "href": "/os/content/editorial"},
         {"id": "publishing", "label": "Publishing", "href": "/os/content/publishing"},
-        {"id": "seo", "label": "SEO", "href": "/os/content/seo"},
-        {"id": "pipeline", "label": "Pipeline", "href": "/os/content/pipeline"},
-        {"id": "analytics", "label": "Analytics", "href": "/os/content/analytics"},
     ]
 
 
@@ -456,17 +449,27 @@ def _tracker_items() -> dict[str, Any]:
     return _guard("Content tracker", build_content_list)
 
 
+def _dict_get(node: Any, key: str, default: Any = None) -> Any:
+    if isinstance(node, dict) and key in node:
+        return node[key]
+    return default
+
+
 def build_home(**ctx: Any) -> dict[str, Any]:
     organization_id = ctx["organization_id"]
     view = _base(
         workspace="Home",
-        title="Founder Home",
+        title="Home",
         section="home",
-        purpose="Decisions and exceptions that need a person. Metrics are omitted when they do not change an action.",
+        purpose=(
+            "What needs a decision, what the command read says changed, what is blocked, "
+            "and where to inspect revenue, content, and operations."
+        ),
         tabs=_home_tabs(),
         active_page="home",
         read_state="ok",
     )
+    view["alerts"] = []
     snapped = _guard(
         "Command center",
         lambda: build_command_center_snapshot(organization_id=organization_id),
@@ -488,21 +491,54 @@ def build_home(**ctx: Any) -> dict[str, Any]:
         ]
         return view
     if snapshot.get("errors"):
-        view["alerts"] = [
+        view["alerts"].append(
             _alert(
                 "warning",
                 "Partial read",
                 "Some command sources failed: " + ", ".join(str(item) for item in snapshot["errors"]),
             )
-        ]
-    loop = snapshot.get("decision_loop") or {}
+        )
+    loop = _dict_get(snapshot, "decision_loop", {})
+    orchestration = _dict_get(snapshot, "agent_orchestration", {})
+    counts = _dict_get(orchestration, "counts", {})
+    pipeline = _dict_get(snapshot, "pipeline", {})
+    recent = snapshot.get("recent_activity")
+    publication = _current_week_publication()
+    if publication.get("ok") and publication.get("proven") is True:
+        publication_value = "verified"
+        publication_why = "Authoritative current-week read returned verified publication."
+    elif publication.get("ok") and publication.get("state") == "ready":
+        publication_value = str(publication.get("truth") or "unproven")
+        publication_why = "Current-week publication truth. Unverified tokens stay unverified."
+    elif publication.get("ok"):
+        publication_value = "unproven"
+        publication_why = str(publication.get("detail") or "No verified publication was returned.")
+    else:
+        publication_value = "unavailable"
+        publication_why = str(publication.get("detail") or "Current-week publication read failed.")
     view["kpis"] = [
         _kpi(
             "Needs a decision",
-            str(loop.get("requires_founder", "—")),
+            str(_dict_get(loop, "requires_founder", "—")),
             "Items the command read marked as requiring a founder.",
-            action_href="/command",
-            action_label="Open Command Center",
+            action_href="#decision-queue",
+            action_label="Review decisions",
+            source="DERIVED_FROM_LIVE_API",
+        ),
+        _kpi(
+            "Recent activity rows",
+            str(len(recent)) if isinstance(recent, list) else "—",
+            "Rows returned by the command activity read. This is not a trend.",
+            action_href="/os/operations/activity",
+            action_label="Open activity",
+            source="DERIVED_FROM_LIVE_API",
+        ),
+        _kpi(
+            "Blocked agent work",
+            str(_dict_get(counts, "blocked", "—")),
+            "Blocked orchestration records for this organization. This is not Hermes authority.",
+            action_href="/os/agents/runs",
+            action_label="Open agent status",
             source="DERIVED_FROM_LIVE_API",
         ),
         _kpi(
@@ -514,26 +550,36 @@ def build_home(**ctx: Any) -> dict[str, Any]:
             source="LIVE_API",
         ),
         _kpi(
-            "Demand awaiting intake",
-            str(snapshot.get("pending_demand_count", "—")),
-            "Qualified demand not yet accepted or rejected.",
-            action_href="/demand",
-            action_label="Open Demand",
+            "Commercial records",
+            f"{_dict_get(pipeline, 'contacts', '—')} contacts · {_dict_get(pipeline, 'deals', '—')} deals",
+            "Counts from the command pipeline read for this organization.",
+            action_href="/os/revenue",
+            action_label="Open revenue",
             source="DERIVED_FROM_LIVE_API",
         ),
         _kpi(
-            "Agent exceptions",
-            str((snapshot.get("agent_orchestration") or {}).get("counts", {}).get("blocked", "—")),
-            "Blocked orchestration records for this organization. This is not Hermes authority.",
-            action_href="/os/agents/runs",
-            action_label="Open agent runs",
-            source="DERIVED_FROM_LIVE_API",
+            "Publication truth",
+            publication_value,
+            publication_why,
+            action_href="/os/content",
+            action_label="Open content",
+            source="LIVE_API" if publication.get("ok") else "API_GAP",
         ),
     ]
     decisions = []
-    for item in (snapshot.get("decision_items") or [])[:12]:
+    raw_items = snapshot.get("decision_items") or []
+    if not isinstance(raw_items, list):
+        raw_items = []
+    for item in raw_items[:12]:
+        if not isinstance(item, dict):
+            continue
         actions = []
-        for action in item.get("command_actions") or []:
+        raw_actions = item.get("command_actions") or []
+        if not isinstance(raw_actions, list):
+            raw_actions = []
+        for action in raw_actions:
+            if not isinstance(action, dict):
+                continue
             mode = action.get("execution_mode")
             if mode == "INLINE_GOVERNED":
                 actions.append(
@@ -576,13 +622,45 @@ def build_home(**ctx: Any) -> dict[str, Any]:
         view["alerts"].append(
             _alert("info", "Decision queue empty", "The command read returned no decision items.")
         )
-    view["primary_action"] = {"href": "/command", "label": "Open Command Center"}
+    view["next_steps"] = [
+        {
+            "href": "/command",
+            "label": "Command Center",
+            "detail": "Governed decision actions stay on the command surface.",
+        },
+        {
+            "href": "/cockpit",
+            "label": "Executive Cockpit",
+            "detail": "Attention panels from the existing cockpit read.",
+        },
+        {
+            "href": "/os/content/pipeline",
+            "label": "Content pipeline",
+            "detail": "Pipeline remains a contextual action. It does not publish.",
+        },
+        {
+            "href": "/os/system",
+            "label": "System",
+            "detail": "Integrations, agent registry, governance, and health.",
+        },
+    ]
+    approval_count = snapshot.get("pending_approval_count") or 0
+    try:
+        approvals_waiting = int(approval_count)
+    except (TypeError, ValueError):
+        approvals_waiting = 0
+    if approvals_waiting:
+        view["primary_action"] = {"href": "/pending-approvals", "label": "Review approvals"}
+    elif decisions:
+        view["primary_action"] = {"href": "#decision-queue", "label": "Review decisions"}
+    else:
+        view["primary_action"] = {"href": "/os/revenue", "label": "Inspect revenue"}
     return view
 
 
 def build_revenue_overview(**ctx: Any) -> dict[str, Any]:
     view = _base(
-        workspace="Revenue",
+        workspace="Sales",
         title="Overview",
         section="overview",
         purpose="Exceptions in demand, people, and deals for this organization.",
@@ -634,7 +712,7 @@ def build_revenue_overview(**ctx: Any) -> dict[str, Any]:
 
 def build_revenue_contacts(**ctx: Any) -> dict[str, Any]:
     view = _base(
-        workspace="Revenue",
+        workspace="Sales",
         title="Contacts",
         section="contacts",
         purpose="People already in this organization. Search filters this table only.",
@@ -686,7 +764,7 @@ def build_revenue_contacts(**ctx: Any) -> dict[str, Any]:
 
 def build_revenue_companies(**_ctx: Any) -> dict[str, Any]:
     view = _base(
-        workspace="Revenue",
+        workspace="Sales",
         title="Companies",
         section="companies",
         purpose="A companies workspace needs a tenant-scoped list. That read is not available.",
@@ -714,7 +792,7 @@ def build_revenue_companies(**_ctx: Any) -> dict[str, Any]:
 
 def build_revenue_deals(**ctx: Any) -> dict[str, Any]:
     view = _base(
-        workspace="Revenue",
+        workspace="Sales",
         title="Deals",
         section="deals",
         purpose="Deals returned by the organization-scoped operator flow.",
@@ -755,7 +833,7 @@ def build_revenue_deals(**ctx: Any) -> dict[str, Any]:
 
 def build_revenue_pipeline(**ctx: Any) -> dict[str, Any]:
     view = _base(
-        workspace="Revenue",
+        workspace="Sales",
         title="Pipeline",
         section="pipeline",
         purpose="Open-deal stage counts for this organization. Closed deals are excluded by the pipeline health read.",
@@ -807,7 +885,7 @@ def build_revenue_pipeline(**ctx: Any) -> dict[str, Any]:
 
 def build_revenue_activities(**ctx: Any) -> dict[str, Any]:
     view = _base(
-        workspace="Revenue",
+        workspace="Sales",
         title="Activities",
         section="activities",
         purpose="CRM activities that verify into this organization.",
@@ -861,7 +939,7 @@ def build_revenue_activities(**ctx: Any) -> dict[str, Any]:
 
 def build_revenue_prospecting(**ctx: Any) -> dict[str, Any]:
     view = _base(
-        workspace="Revenue",
+        workspace="Sales",
         title="Prospecting",
         section="prospecting",
         purpose="People already stored for this organization. This page does not source, import, or send outreach.",
@@ -922,7 +1000,7 @@ def build_revenue_prospecting(**ctx: Any) -> dict[str, Any]:
 
 def build_revenue_intelligence(**ctx: Any) -> dict[str, Any]:
     view = _base(
-        workspace="Revenue",
+        workspace="Sales",
         title="Revenue Intelligence",
         section="intelligence",
         purpose="What the server will say about pipeline health, and what Hermes is actually allowed to do.",
@@ -978,7 +1056,7 @@ def build_revenue_intelligence(**ctx: Any) -> dict[str, Any]:
 
 def build_marketing_overview(**ctx: Any) -> dict[str, Any]:
     view = _base(
-        workspace="Marketing",
+        workspace="Growth",
         title="Overview",
         section="overview",
         purpose="Campaigns, demand, and channel configuration. Cross-workspace revenue attribution is unknown.",
@@ -1064,7 +1142,7 @@ def build_marketing_overview(**ctx: Any) -> dict[str, Any]:
 
 def build_marketing_campaigns(**ctx: Any) -> dict[str, Any]:
     view = _base(
-        workspace="Marketing",
+        workspace="Growth",
         title="Campaigns",
         section="campaigns",
         purpose="Campaign records for this organization. This page does not start a campaign.",
@@ -1108,7 +1186,7 @@ def build_marketing_campaigns(**ctx: Any) -> dict[str, Any]:
 
 def build_marketing_demand(**ctx: Any) -> dict[str, Any]:
     view = _base(
-        workspace="Marketing",
+        workspace="Growth",
         title="Demand",
         section="demand",
         purpose="Demand intake already governed on the demand workspace.",
@@ -1151,7 +1229,7 @@ def build_marketing_demand(**ctx: Any) -> dict[str, Any]:
 def build_marketing_seo(**ctx: Any) -> dict[str, Any]:
     del ctx
     view = _base(
-        workspace="Marketing",
+        workspace="Growth",
         title="SEO",
         section="seo",
         purpose="SEO readiness already has screens. This tab does not invent scores.",
@@ -1185,7 +1263,7 @@ def build_marketing_seo(**ctx: Any) -> dict[str, Any]:
 
 def build_marketing_performance(**_ctx: Any) -> dict[str, Any]:
     view = _base(
-        workspace="Marketing",
+        workspace="Growth",
         title="Content Performance",
         section="performance",
         purpose="Tracker and QA counts. Publication performance is unknown.",
@@ -1214,7 +1292,7 @@ def build_marketing_performance(**_ctx: Any) -> dict[str, Any]:
 
 def build_marketing_analytics(**_ctx: Any) -> dict[str, Any]:
     view = _base(
-        workspace="Marketing",
+        workspace="Growth",
         title="Analytics",
         section="analytics",
         purpose="The existing analytics screen remains the chart surface. Tracker status labeled Published there is not verified publication.",
@@ -1294,7 +1372,14 @@ def build_content_overview(**ctx: Any) -> dict[str, Any]:
         ),
     ]
     view["table"] = _content_table(items[:25])
-    view["primary_action"] = {"href": "/content-ops", "label": "Open Content Ops beta"}
+    view["primary_action"] = {"href": "/content-ops", "label": "Open the live week read"}
+    view["next_steps"] = [
+        {
+            "href": "/os/content/pipeline",
+            "label": "Pipeline",
+            "detail": "Contextual action. Opening it does not start a run or publish.",
+        }
+    ]
     return view
 
 

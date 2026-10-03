@@ -477,11 +477,11 @@ def test_content_ops_nav_stays_open_on_content_pages(client: TestClient) -> None
     assert 'href="/editorial"' in weeks.text
     assert _nav_open(login.text) is False
     assert 'data-persistent="true"' not in _nav_tag(login.text)
-    assert 'href="/command"' in login.text
-    assert 'href="/demand"' in login.text
+    assert 'href="/home"' in login.text
+    assert 'href="/os/revenue/contacts"' in login.text
     assert 'href="/pending-approvals"' in login.text
-    assert 'href="/activity"' in login.text
-    assert 'href="/operator"' in login.text
+    assert 'href="/os/operations/activity"' in login.text
+    assert 'href="/os/system"' in login.text
 
 
 def test_scenario_catalog_covers_the_mandatory_set() -> None:

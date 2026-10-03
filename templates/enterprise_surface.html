@@ -82,8 +82,8 @@
   </section>
   {% endif %}
 
-  {% if surface.decisions %}
-  <section aria-label="Decision queue" data-testid="decision-queue">
+  {% if surface.surface_id == 'home' %}
+  <section id="decision-queue" aria-label="Decision queue" data-testid="decision-queue">
     <h2 class="os-section-title">Decision queue</h2>
     {% for card in surface.decisions %}
     <article class="os-decision" data-testid="decision-card" data-severity="{{ card.severity }}">
@@ -107,6 +107,8 @@
         <a class="btn btn-ghost btn-sm" href="{{ card.audit_href }}">Audit</a>
       </div>
     </article>
+    {% else %}
+    <p class="os-empty">No decision items were returned.</p>
     {% endfor %}
   </section>
   {% endif %}
@@ -208,6 +210,17 @@
       <h3>Audit</h3>
       <p>Actor, action, and time come from the activity read. This specimen is not a record.</p>
     </div>
+  </section>
+  {% endif %}
+
+  {% if surface.next_steps %}
+  <section aria-label="Inspect next" data-testid="inspect-next">
+    <h2 class="os-section-title">Inspect next</h2>
+    <ul>
+      {% for step in surface.next_steps %}
+      <li><a href="{{ step.href }}">{{ step.label }}</a> — {{ step.detail }}</li>
+      {% endfor %}
+    </ul>
   </section>
   {% endif %}
 

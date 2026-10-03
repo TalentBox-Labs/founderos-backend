@@ -272,6 +272,7 @@
     details.nav-collapsed summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     details.nav-collapsed[data-persistent="true"] > summary { pointer-events: none; cursor: default; }
     details.nav-collapsed[data-persistent="true"] > div { display: block; }
+    details.nav-collapsed details.nav-collapsed { margin: 4px 0 4px 8px; }
 
     :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     .skip-link {
@@ -286,6 +287,13 @@
       border-radius: var(--radius-sm); min-width: 32px; min-height: 32px; padding: 4px 8px;
     }
     body.sidebar-is-collapsed .sidebar { width: 72px; min-width: 72px; }
+    body.sidebar-is-collapsed .sidebar-tools { padding: 8px 6px 0; }
+    body.sidebar-is-collapsed .sidebar-toggle {
+      width: 100%; box-sizing: border-box; padding: 4px 0; font-size: 11px; letter-spacing: 0;
+    }
+    body.sidebar-is-collapsed details.nav-collapsed > summary[data-mark]::before {
+      content: attr(data-mark); font-size: 10px; font-weight: 700; letter-spacing: 0;
+    }
     body.sidebar-is-collapsed .logo-text,
     body.sidebar-is-collapsed .logo-sub,
     body.sidebar-is-collapsed .nav-label,
@@ -308,8 +316,8 @@
     .os-surface h1 { font-size: 22px; font-weight: 650; letter-spacing: -0.02em; }
     .os-crumb, .os-purpose, .os-sources, .os-kpi-why, .os-action-detail { color: var(--text-secondary); font-size: 13px; }
     .os-purpose { max-width: 72ch; margin: 6px 0 16px; }
-    .os-tabs { display: flex; gap: 4px; flex-wrap: wrap; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
-    .os-tab { color: var(--text-secondary); padding: 8px 10px; border-bottom: 2px solid transparent; text-decoration: none; font-size: 13px; }
+    .os-tabs { display: flex; gap: 4px; flex-wrap: nowrap; overflow-x: auto; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+    .os-tab { color: var(--text-secondary); padding: 8px 10px; border-bottom: 2px solid transparent; text-decoration: none; font-size: 13px; white-space: nowrap; flex: 0 0 auto; }
     .os-tab.is-current { color: var(--text-primary); border-bottom-color: var(--accent); text-decoration: none; }
     .os-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px; }
     .os-kpi, .os-decision, .os-hermes, .os-alert, .os-pipeline {
@@ -367,7 +375,7 @@
       border: 1px dashed var(--border); border-radius: var(--radius-sm); padding: 14px 16px; background: var(--surface);
     }
     .os-audit { font-size: 12px; color: var(--text-secondary); border-top: 1px solid var(--border); margin-top: 16px; padding-top: 10px; }
-    .os-tabs { overflow-x: auto; }
+    .os-tabs { overflow-x: auto; flex-wrap: nowrap; }
     @media (max-width: 800px) {
       .os-table td[data-priority="low"], .os-table th[data-priority="low"] { display: none; }
       .topbar { padding: 10px 12px; align-items: flex-start; }
@@ -394,146 +402,82 @@
   </div>
 
   <nav class="nav-section" aria-label="Workspaces" data-testid="enterprise-nav">
-    <div class="nav-section-label">Home</div>
-    <a href="/home" class="nav-item {% if active_page == 'home' %}active{% endif %}" {% if active_page == 'home' %}aria-current="page"{% endif %} title="Founder Home">
+    <a href="/home" class="nav-item {% if active_page == 'home' %}active{% endif %}" {% if active_page == 'home' %}aria-current="page"{% endif %} title="Home">
       <span class="nav-mark" aria-hidden="true">Ho</span>
-      <span class="nav-label">Founder Home</span>
-    </a>
-    <a href="/command" class="nav-item {% if active_page == 'command' %}active{% endif %}" aria-label="Home, Command Center" {% if active_page == 'command' %}aria-current="page"{% endif %} title="Command Center">
-      <span class="nav-mark" aria-hidden="true">CC</span>
-      <span class="nav-label">Command Center</span>
-    </a>
-    <a href="/activity" class="nav-item {% if active_page == 'activity' %}active{% endif %}" title="Global Activity">
-      <span class="nav-mark" aria-hidden="true">Ac</span>
-      <span class="nav-label">Global Activity</span>
+      <span class="nav-label">Home</span>
     </a>
   </nav>
 
-  {% set revenue_pages = ['revenue', 'revenue_contacts', 'revenue_companies', 'revenue_deals', 'revenue_pipeline', 'revenue_activities', 'revenue_prospecting', 'revenue_intelligence', 'demand', 'operator', 'sales'] %}
-  <nav class="nav-section" aria-label="Revenue">
-    <details class="nav-collapsed"{% if (active_page|default('')) in revenue_pages %} open{% endif %}>
-      <summary>Revenue</summary>
-      <div style="padding-top:4px">
-        <a href="/os/revenue" class="nav-item {% if active_page == 'revenue' %}active{% endif %}"><span class="nav-label">Overview</span></a>
-        <a href="/os/revenue/contacts" class="nav-item {% if active_page == 'revenue_contacts' %}active{% endif %}"><span class="nav-label">Contacts</span></a>
-        <a href="/demand" class="nav-item {% if active_page == 'demand' %}active{% endif %}"><span class="nav-label">Demand &amp; Contacts</span></a>
-        <a href="/os/revenue/companies" class="nav-item {% if active_page == 'revenue_companies' %}active{% endif %}"><span class="nav-label">Companies</span></a>
-        <a href="/os/revenue/deals" class="nav-item {% if active_page == 'revenue_deals' %}active{% endif %}"><span class="nav-label">Deals</span></a>
-        <a href="/os/revenue/pipeline" class="nav-item {% if active_page == 'revenue_pipeline' %}active{% endif %}"><span class="nav-mark" aria-hidden="true">Pi</span><span class="nav-label">Pipeline</span></a>
-        <a href="/os/revenue/activities" class="nav-item {% if active_page == 'revenue_activities' %}active{% endif %}"><span class="nav-mark" aria-hidden="true">Ac</span><span class="nav-label">Activities</span></a>
-        <a href="/os/revenue/prospecting" class="nav-item {% if active_page == 'revenue_prospecting' %}active{% endif %}"><span class="nav-mark" aria-hidden="true">Pr</span><span class="nav-label">Prospecting</span></a>
-        <a href="/operator" class="nav-item {% if active_page == 'operator' %}active{% endif %}"><span class="nav-mark" aria-hidden="true">Wf</span><span class="nav-label">Revenue Workflow</span></a>
-        <a href="/sales" class="nav-item {% if active_page == 'sales' %}active{% endif %}"><span class="nav-mark" aria-hidden="true">Sc</span><span class="nav-label">Prospecting screen</span></a>
-      </div>
-    </details>
-  </nav>
-
-  {% set marketing_pages = ['marketing_os', 'marketing_campaigns', 'marketing_demand', 'marketing_seo', 'marketing_performance', 'marketing_analytics', 'marketing', 'seo'] %}
-  <nav class="nav-section" aria-label="Marketing">
-    <details class="nav-collapsed"{% if (active_page|default('')) in marketing_pages %} open{% endif %}>
-      <summary>Marketing</summary>
+  {% set content_ops_pages = [
+    'dashboard', 'weeks', 'content_studio',
+    'editorial', 'publishing', 'pipeline', 'content_ops',
+    'os_content', 'os_content_calendar', 'os_content_studio',
+    'os_content_editorial', 'os_content_publishing', 'os_content_seo',
+    'os_content_pipeline', 'os_content_analytics'
+  ] %}
+  {% set content_ops_nav_open = (active_page|default('')) in content_ops_pages %}
+  {% set marketing_pages = ['marketing_os', 'marketing_campaigns', 'marketing_demand', 'marketing_seo', 'marketing_performance', 'marketing_analytics', 'marketing', 'seo', 'analytics'] %}
+  <nav class="nav-section" aria-label="Growth">
+    <details class="nav-collapsed"{% if content_ops_nav_open or (active_page|default('')) in marketing_pages %} open{% endif %}>
+      <summary data-mark="Gr">Growth</summary>
       <div style="padding-top:4px">
         <a href="/os/marketing" class="nav-item {% if active_page == 'marketing_os' %}active{% endif %}"><span class="nav-label">Overview</span></a>
         <a href="/os/marketing/campaigns" class="nav-item {% if active_page == 'marketing_campaigns' %}active{% endif %}"><span class="nav-label">Campaigns</span></a>
-        <a href="/os/marketing/demand" class="nav-item {% if active_page == 'marketing_demand' %}active{% endif %}"><span class="nav-label">Demand</span></a>
-        <a href="/marketing" class="nav-item {% if active_page == 'marketing' %}active{% endif %}"><span class="nav-label">Marketing agent</span></a>
-        <a href="/seo" class="nav-item {% if active_page == 'seo' %}active{% endif %}"><span class="nav-label">SEO</span></a>
-        <a href="/analytics" class="nav-item {% if active_page == 'analytics' %}active{% endif %}"><span class="nav-label">Analytics</span></a>
+        <details class="nav-collapsed" data-testid="content-ops-nav"{% if content_ops_nav_open %} open data-persistent="true"{% endif %}>
+          <summary{% if content_ops_nav_open %} data-current-section="true"{% endif %}>Content</summary>
+          <div style="padding-top:4px">
+            <a href="/os/content" class="nav-item {% if active_page == 'os_content' %}active{% endif %}"><span class="nav-label">Overview</span></a>
+            <a href="/weeks" class="nav-item {% if active_page == 'weeks' %}active{% endif %}"><span class="nav-label">Calendar</span></a>
+            <a href="/content-studio" class="nav-item {% if active_page == 'content_studio' %}active{% endif %}"><span class="nav-label">Studio</span></a>
+            <a href="/editorial" class="nav-item {% if active_page == 'editorial' %}active{% endif %}"><span class="nav-label">Editorial</span></a>
+            <a href="/publishing" class="nav-item {% if active_page == 'publishing' %}active{% endif %}"><span class="nav-label">Publishing</span></a>
+            <a href="/content-ops" class="nav-item {% if active_page == 'content_ops' %}active{% endif %}" data-testid="nav-content-ops-beta"><span class="nav-label">Live week read</span></a>
+          </div>
+        </details>
+        <a href="/os/marketing/seo" class="nav-item {% if active_page == 'marketing_seo' or active_page == 'seo' %}active{% endif %}"><span class="nav-label">SEO</span></a>
+        <a href="/analytics" class="nav-item {% if active_page == 'analytics' or active_page == 'marketing_analytics' %}active{% endif %}"><span class="nav-label">Analytics</span></a>
       </div>
     </details>
   </nav>
 
-  <div class="nav-section">
-    {% set content_ops_pages = [
-      'dashboard', 'cockpit', 'analytics', 'weeks', 'content_studio',
-      'editorial', 'publishing', 'pipeline', 'content_ops',
-      'os_content', 'os_content_calendar', 'os_content_studio',
-      'os_content_editorial', 'os_content_publishing', 'os_content_seo',
-      'os_content_pipeline', 'os_content_analytics'
-    ] %}
-    {% set content_ops_nav_open = (active_page|default('')) in content_ops_pages %}
-    <details class="nav-collapsed" data-testid="content-ops-nav"{% if content_ops_nav_open %} open data-persistent="true"{% endif %}>
-      <summary{% if content_ops_nav_open %} data-current-section="true"{% endif %}>Content</summary>
+  {% set revenue_pages = ['revenue', 'revenue_contacts', 'revenue_companies', 'revenue_deals', 'revenue_pipeline', 'revenue_activities', 'revenue_prospecting', 'revenue_intelligence', 'demand', 'operator', 'sales'] %}
+  <nav class="nav-section" aria-label="Sales">
+    <details class="nav-collapsed"{% if (active_page|default('')) in revenue_pages %} open{% endif %}>
+      <summary data-mark="Sa">Sales</summary>
       <div style="padding-top:4px">
-    <a href="/os/content" class="nav-item {% if active_page == 'os_content' %}active{% endif %}">
-      <span class="nav-label">Overview</span>
-    </a>
-    <a href="/content-ops" class="nav-item {% if active_page == 'content_ops' %}active{% endif %}" data-testid="nav-content-ops-beta">
-      <span class="nav-label">Content Ops Beta</span>
-    </a>
-    <a href="/" class="nav-item {% if active_page == 'dashboard' %}active{% endif %}">
-      <span class="nav-label">Dashboard</span>
-    </a>
-    <a href="/cockpit" class="nav-item {% if active_page == 'cockpit' %}active{% endif %}">
-      <span class="nav-label">Executive Cockpit</span>
-    </a>
-    <a href="/weeks" class="nav-item {% if active_page == 'weeks' %}active{% endif %}">
-      <span class="nav-label">Content Calendar</span>
-    </a>
-    <a href="/content-studio" class="nav-item {% if active_page == 'content_studio' %}active{% endif %}">
-      <span class="nav-label">Content Studio</span>
-    </a>
-    <a href="/editorial" class="nav-item {% if active_page == 'editorial' %}active{% endif %}">
-      <span class="nav-label">Editorial</span>
-    </a>
-    <a href="/publishing" class="nav-item {% if active_page == 'publishing' %}active{% endif %}">
-      <span class="nav-label">Publishing</span>
-    </a>
-    <a href="/os/content/seo" class="nav-item {% if active_page == 'os_content_seo' %}active{% endif %}">
-      <span class="nav-label">SEO</span>
-    </a>
-    <a href="/os/content/pipeline" class="nav-item {% if active_page == 'os_content_pipeline' %}active{% endif %}">
-      <span class="nav-label">Pipeline</span>
-    </a>
-    <a href="/pipeline" class="nav-item {% if active_page == 'pipeline' %}active{% endif %}">
-      <span class="nav-label">Run Pipeline</span>
-    </a>
-    <a href="/analytics" class="nav-item {% if active_page == 'analytics' %}active{% endif %}">
-      <span class="nav-label">Analytics</span>
-    </a>
+        <a href="/os/revenue" class="nav-item {% if active_page == 'revenue' %}active{% endif %}"><span class="nav-label">Overview</span></a>
+        <a href="/os/revenue/contacts" class="nav-item {% if active_page == 'revenue_contacts' %}active{% endif %}"><span class="nav-label">Contacts</span></a>
+        <a href="/os/revenue/companies" class="nav-item {% if active_page == 'revenue_companies' %}active{% endif %}"><span class="nav-label">Companies</span></a>
+        <a href="/os/revenue/deals" class="nav-item {% if active_page == 'revenue_deals' %}active{% endif %}"><span class="nav-label">Deals</span></a>
+        <a href="/os/revenue/pipeline" class="nav-item {% if active_page == 'revenue_pipeline' %}active{% endif %}"><span class="nav-label">Pipeline</span></a>
       </div>
     </details>
-  </div>
+  </nav>
 
-  {% set operations_pages = ['operations', 'operations_approvals', 'operations_activity', 'operations_automations', 'operations_jobs', 'approvals', 'activity'] %}
+  {% set operations_pages = ['operations', 'operations_approvals', 'operations_activity', 'operations_automations', 'operations_jobs', 'approvals', 'activity', 'agents_runs'] %}
   <nav class="nav-section" aria-label="Operations">
     <details class="nav-collapsed"{% if (active_page|default('')) in operations_pages %} open{% endif %}>
-      <summary>Operations</summary>
+      <summary data-mark="Op">Operations</summary>
       <div style="padding-top:4px">
-        <a href="/os/operations" class="nav-item {% if active_page == 'operations' %}active{% endif %}"><span class="nav-label">Overview</span></a>
         <a href="/pending-approvals" class="nav-item {% if active_page == 'approvals' %}active{% endif %}"><span class="nav-label">Approvals</span></a>
         <a href="/os/operations/automations" class="nav-item {% if active_page == 'operations_automations' %}active{% endif %}"><span class="nav-label">Workflows</span></a>
-        <a href="/os/operations/jobs" class="nav-item {% if active_page == 'operations_jobs' %}active{% endif %}"><span class="nav-label">Jobs</span></a>
+        <a href="/os/operations/activity" class="nav-item {% if active_page == 'operations_activity' or active_page == 'activity' %}active{% endif %}"><span class="nav-label">Activity</span></a>
+        <a href="/os/agents/runs" class="nav-item {% if active_page == 'agents_runs' %}active{% endif %}"><span class="nav-label">Agent status</span></a>
       </div>
     </details>
   </nav>
 
-  {% set agent_pages = ['agents', 'agents_runs', 'agents_capabilities', 'agents_evaluations', 'mcp'] %}
-  <nav class="nav-section" aria-label="Agents">
-    <details class="nav-collapsed"{% if (active_page|default('')) in agent_pages %} open{% endif %}>
-      <summary>Agents</summary>
-      <div style="padding-top:4px">
-        <a href="/os/agents" class="nav-item {% if active_page == 'agents' %}active{% endif %}"><span class="nav-label">Agent Hub</span></a>
-        <a href="/os/agents/runs" class="nav-item {% if active_page == 'agents_runs' %}active{% endif %}"><span class="nav-label">Runs</span></a>
-        <a href="/os/agents/capabilities" class="nav-item {% if active_page == 'agents_capabilities' %}active{% endif %}"><span class="nav-label">Capabilities</span></a>
-        <a href="/os/agents/evaluations" class="nav-item {% if active_page == 'agents_evaluations' %}active{% endif %}"><span class="nav-label">Evaluations</span></a>
-        <a href="/mcp" class="nav-item {% if active_page == 'mcp' %}active{% endif %}"><span class="nav-label">MCP Hub</span></a>
-      </div>
-    </details>
-  </nav>
-
-  {% set system_pages = ['system', 'system_integrations', 'system_governance', 'system_identity', 'system_tenant', 'system_health', 'system_settings', 'design_system'] %}
+  {% set system_pages = ['system', 'system_integrations', 'system_governance', 'system_identity', 'system_tenant', 'system_health', 'system_settings', 'agents', 'agents_capabilities', 'agents_evaluations', 'design_system'] %}
   <nav class="nav-section" aria-label="System">
     <details class="nav-collapsed"{% if (active_page|default('')) in system_pages %} open{% endif %}>
-      <summary>System</summary>
+      <summary data-mark="Sy">System</summary>
       <div style="padding-top:4px">
         <a href="/os/system" class="nav-item {% if active_page == 'system' %}active{% endif %}"><span class="nav-label">Overview</span></a>
         <a href="/os/system/integrations" class="nav-item {% if active_page == 'system_integrations' %}active{% endif %}"><span class="nav-label">Integrations</span></a>
+        <a href="/os/agents" class="nav-item {% if active_page == 'agents' %}active{% endif %}"><span class="nav-label">Agents</span></a>
         <a href="/os/system/governance" class="nav-item {% if active_page == 'system_governance' %}active{% endif %}"><span class="nav-label">Governance</span></a>
-        <a href="/os/system/identity" class="nav-item {% if active_page == 'system_identity' %}active{% endif %}"><span class="nav-label">Identity</span></a>
-        <a href="/os/system/tenant" class="nav-item {% if active_page == 'system_tenant' %}active{% endif %}"><span class="nav-label">Tenant</span></a>
-        <a href="/os/system/health" class="nav-item {% if active_page == 'system_health' %}active{% endif %}"><span class="nav-label">System Health</span></a>
-        <a href="/os/design-system" class="nav-item {% if active_page == 'design_system' %}active{% endif %}"><span class="nav-label">Design system</span></a>
+        <a href="/os/system/identity" class="nav-item {% if active_page == 'system_identity' or active_page == 'system_tenant' %}active{% endif %}"><span class="nav-label">Identity / Workspace</span></a>
+        <a href="/os/system/health" class="nav-item {% if active_page == 'system_health' %}active{% endif %}"><span class="nav-label">Health</span></a>
       </div>
     </details>
   </nav>
@@ -618,23 +562,21 @@ document.querySelectorAll('details[data-persistent="true"]').forEach(function (e
 });
 (function () {
   var links = [
-    ['Founder Home', '/home'],
-    ['Command Center', '/command'],
-    ['Global Activity', '/activity'],
-    ['Revenue', '/os/revenue'],
-    ['Prospecting', '/os/revenue/prospecting'],
+    ['Home', '/home'],
+    ['Growth', '/os/marketing'],
+    ['Sales', '/os/revenue'],
     ['Contacts', '/os/revenue/contacts'],
     ['Companies', '/os/revenue/companies'],
     ['Deals', '/os/revenue/deals'],
     ['Pipeline', '/os/revenue/pipeline'],
-    ['Marketing', '/os/marketing'],
+    ['Campaigns', '/os/marketing/campaigns'],
     ['Content', '/os/content'],
-    ['Content SEO', '/os/content/seo'],
-    ['Content pipeline', '/os/content/pipeline'],
+    ['SEO', '/os/marketing/seo'],
+    ['Analytics', '/analytics'],
     ['Approvals', '/pending-approvals'],
-    ['Agents', '/os/agents'],
-    ['System', '/os/system'],
-    ['Design system', '/os/design-system']
+    ['Workflows', '/os/operations/automations'],
+    ['Activity', '/os/operations/activity'],
+    ['System', '/os/system']
   ];
   var palette = document.getElementById('os-palette');
   var notice = document.getElementById('os-notice');
@@ -680,7 +622,8 @@ document.querySelectorAll('details[data-persistent="true"]').forEach(function (e
   function applyCollapsed(collapsed) {
     document.body.classList.toggle('sidebar-is-collapsed', collapsed);
     toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-    toggle.textContent = collapsed ? 'Expand' : 'Collapse';
+    toggle.setAttribute('aria-label', collapsed ? 'Expand navigation' : 'Collapse navigation');
+    toggle.textContent = collapsed ? 'Open' : 'Collapse';
   }
   applyCollapsed(window.localStorage.getItem('founder-os-sidebar') === 'collapsed');
   toggle.addEventListener('click', function () {
@@ -694,9 +637,6 @@ document.querySelectorAll('details[data-persistent="true"]').forEach(function (e
     var hasCurrent = !!details.querySelector('.nav-item.active, [data-current-section="true"]');
     if (!hasCurrent && window.localStorage.getItem(key) === 'closed') {
       details.open = false;
-    }
-    if (!hasCurrent && window.localStorage.getItem(key) === 'open') {
-      details.open = true;
     }
     details.addEventListener('toggle', function () {
       if (details.open && details.querySelector('.nav-item.active, [data-current-section="true"]')) {

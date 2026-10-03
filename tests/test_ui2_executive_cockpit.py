@@ -186,10 +186,13 @@ def test_cockpit_route_loads(client: TestClient) -> None:
 
 
 def test_shell_navigation_links_cockpit(client: TestClient) -> None:
-    r = client.get("/")
-    assert r.status_code == 200
-    assert 'href="/cockpit"' in r.text
-    assert "Executive Cockpit" in r.text
+    shell = client.get("/")
+    assert shell.status_code == 200
+    assert 'href="/cockpit"' not in shell.text
+    assert ">Executive Cockpit<" not in shell.text
+    route = client.get("/cockpit")
+    assert route.status_code == 200
+    assert "Executive Cockpit" in route.text
 
 
 def test_cockpit_unauthenticated_follows_open_dev_pattern(client: TestClient) -> None:
