@@ -86,10 +86,12 @@ def test_shell_routes_render_without_mock_fallback(cms_client: TestClient) -> No
 
 def test_companies_workspace_states_the_gap(cms_client: TestClient) -> None:
     html = cms_client.get("/os/revenue/companies").text
-    assert "API_GAP" in html
     assert 'data-read-state="gap"' in html
     assert "No companies endpoint is available" in html
-    assert API_GAPS[0] in html
+    assert "no organization-scoped company list" in html
+    assert "API_GAP" not in html
+    governance = cms_client.get("/os/system/governance").text
+    assert API_GAPS[0] in governance
 
 
 def test_content_workspace_does_not_claim_verified_publication(cms_client: TestClient) -> None:
@@ -128,7 +130,11 @@ def test_gmail_stays_blocked_on_integrations(cms_client: TestClient) -> None:
 def test_automations_are_not_listed_across_tenants(cms_client: TestClient) -> None:
     html = cms_client.get("/os/operations/automations").text
     assert 'data-read-state="gap"' in html
-    assert "process-global" in html
+    assert "not limited to this organization" in html
+    assert "no workflow rows are shown" in html
+    assert "process-global" not in html
+    governance = cms_client.get("/os/system/governance").text
+    assert "process-global" in governance
 
 
 def test_content_section_stays_open_on_content_workspace(cms_client: TestClient) -> None:
@@ -189,6 +195,104 @@ def test_home_empty_command_read_stays_a_page(monkeypatch) -> None:
     assert any(alert["title"] == "Decision queue empty" for alert in view["alerts"])
     publication = next(kpi for kpi in view["kpis"] if kpi["label"] == "Publication truth")
     assert publication["value"] == "unproven"
+    assert view["primary_action"]["href"] == "/os/revenue"
+    assert view["kpis"][0]["value"] == "0"
+
+
+def test_home_surfaces_current_week_human_decision(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "src.ui.enterprise.compose.build_command_center_snapshot",
+        lambda **_kwargs: {
+            "state": "ok",
+            "errors": [],
+            "decision_loop": {"requires_founder": 0},
+            "pending_approval_count": 0,
+            "pending_demand_count": 0,
+            "agent_orchestration": {"counts": {"blocked": 0}},
+            "decision_items": [],
+            "pipeline": {"contacts": 0, "deals": 0},
+            "recent_activity": [],
+        },
+    )
+    monkeypatch.setattr(
+        "src.ui.enterprise.compose._current_week_publication",
+        lambda: {
+            "ok": True,
+            "state": "ready",
+            "week_id": "W01",
+            "truth": "unproven",
+            "verification": "unproven",
+            "status": "not_started",
+            "url": "",
+            "proven": False,
+            "attention": {
+                "required": True,
+                "kind": "ACTION_REQUIRED",
+                "week_id": "W01",
+                "summary": "Human editorial decision required.",
+                "href": "/content-ops",
+                "actions": ["Reject", "Request changes"],
+                "approve_offered": False,
+            },
+        },
+    )
+    view = compose_surface(
+        "home",
+        organization_id="org-1",
+        identity={"is_human": True, "principal_kind": "HUMAN"},
+        tenant={"organization_name": "Founder Organization"},
+        active_week="W01",
+    )
+    needs = next(kpi for kpi in view["kpis"] if kpi["label"] == "Needs a decision")
+    approvals = next(kpi for kpi in view["kpis"] if kpi["label"] == "Approvals waiting")
+    assert needs["value"] == "1"
+    assert approvals["value"] == "0"
+    assert view["decisions"][0]["title"] == "W01 needs a human decision"
+    assert view["decisions"][0]["actions"][0]["href"] == "/content-ops"
+    assert "Approve is not available" in view["decisions"][0]["evidence"]
+    assert view["primary_action"] == {"href": "/content-ops", "label": "Review W01"}
+    assert not any(alert["title"] == "Decision queue empty" for alert in view["alerts"])
+
+
+def test_unproven_publication_is_not_a_home_decision(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "src.ui.enterprise.compose.build_command_center_snapshot",
+        lambda **_kwargs: {
+            "state": "ok",
+            "errors": [],
+            "decision_loop": {"requires_founder": 0},
+            "pending_approval_count": 0,
+            "decision_items": [],
+            "agent_orchestration": {"counts": {"blocked": 0}},
+            "pipeline": {"contacts": 0, "deals": 0},
+            "recent_activity": [],
+        },
+    )
+    monkeypatch.setattr(
+        "src.ui.enterprise.compose._current_week_publication",
+        lambda: {
+            "ok": True,
+            "state": "ready",
+            "week_id": "W01",
+            "truth": "unproven",
+            "proven": False,
+            "attention": {
+                "required": False,
+                "kind": "INFORMATIONAL",
+                "week_id": "W01",
+            },
+        },
+    )
+    view = compose_surface(
+        "home",
+        organization_id="org-1",
+        identity={"is_human": True, "principal_kind": "HUMAN"},
+        tenant={"organization_name": "Founder Organization"},
+        active_week="W01",
+    )
+    needs = next(kpi for kpi in view["kpis"] if kpi["label"] == "Needs a decision")
+    assert needs["value"] == "0"
+    assert view["decisions"] == []
     assert view["primary_action"]["href"] == "/os/revenue"
 
 

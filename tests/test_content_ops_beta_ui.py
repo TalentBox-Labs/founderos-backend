@@ -297,7 +297,51 @@ def test_verified_pipeline_marks_only_verification(client: TestClient) -> None:
     html = _page(client, "verified")
     assert 'data-step="verification" data-step-state="verified"' in html
     assert 'data-step="research" data-step-state="idle"' in html
-    assert "Earlier steps are not marked complete." in html
+    assert "not marked complete or failed" in html
+    assert "Not the active phase" in html
+    assert "Not current" not in html
+
+
+def test_passed_qa_is_not_labeled_as_absent(client: TestClient) -> None:
+    html = _page(client, "human_review")
+    assert 'data-step="qa" data-step-state="idle"' in html
+    assert "Passed — not the active phase" in html
+    assert "QA PASS is a quality result. It is not publication." in html
+
+
+def test_missing_approve_does_not_claim_approval_is_required() -> None:
+    presented = present_content_ops_read(
+        {
+            "ok": True,
+            "live": True,
+            "source": "content_ops_publication_truth",
+            "state": "ready",
+            "http_status": 200,
+            "contract": "GET /api/v1/content-ops/weeks/current",
+            "projection": {
+                "week_id": "W01",
+                "stage": "human_review",
+                "next_action": "Human editorial decision required.",
+                "qa_status": "PASS",
+                "risk_class": "unproven",
+                "approval_required": True,
+                "publication_status": "not_started",
+                "publication_truth": "unproven",
+                "verification_status": "unproven",
+                "allowed_actions": ["reject", "request_changes", "open_artifact", "view_audit"],
+                "artifact_refs": [],
+            },
+        }
+    )
+    assert presented["decision_waiting"] is True
+    assert presented["approve_offered"] is False
+    assert presented["decision_headline"] == "A human decision is waiting."
+    assert "Approval is required." not in presented["decision_headline"]
+    assert "Approve is not available on this read." in presented["decision_limited"]
+    assert [action["id"] for action in presented["decision_actions"]] == [
+        "reject",
+        "request_changes",
+    ]
 
 
 def test_actions_use_existing_routes_without_publish() -> None:

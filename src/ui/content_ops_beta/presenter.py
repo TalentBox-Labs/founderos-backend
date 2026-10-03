@@ -135,6 +135,8 @@ def _present_ready(projection: dict[str, Any], raw: dict[str, Any]) -> dict[str,
     approval_required = projection.get("approval_required") is True
     job_id = _text(projection.get("publication_job_id")) or ""
     decision_ids = [action_id for action_id in allowed if action_id in DECISION_ACTION_IDS]
+    approve_offered = "approve" in decision_ids
+    decision_headline, decision_limited = _decision_copy(approval_required, approve_offered, decision_ids)
     week_actions = [
         action
         for action_id in allowed
@@ -149,7 +151,7 @@ def _present_ready(projection: dict[str, Any], raw: dict[str, Any]) -> dict[str,
         "stage_label": stage.replace("_", " "),
         "next_action": _text(projection.get("next_action")) or "No next action was reported.",
         "attention": _attention(projection, failure),
-        "pipeline": _pipeline(stage, publication["tone"]),
+        "pipeline": _pipeline(stage, publication["tone"], qa_status),
         "qa": {
             "status": qa_status,
             "tone": _qa_tone(qa_status),
@@ -159,6 +161,9 @@ def _present_ready(projection: dict[str, Any], raw: dict[str, Any]) -> dict[str,
             "risk_pill": PILL_BY_TONE[_risk_tone(risk_class)],
         },
         "approval_required": approval_required,
+        "approve_offered": approve_offered,
+        "decision_headline": decision_headline,
+        "decision_limited": decision_limited,
         "decision_waiting": approval_required or bool(decision_ids),
         "decision_actions": [
             action
@@ -241,13 +246,37 @@ def _publication_headline(truth: str, verification: str) -> tuple[str, str]:
     return "Publication status unrecognized", "unknown"
 
 
-def _pipeline(stage: str, publication_tone: str) -> list[dict[str, str]]:
+def _decision_copy(
+    approval_required: bool,
+    approve_offered: bool,
+    decision_ids: list[str],
+) -> tuple[str, str]:
+    if approval_required and approve_offered:
+        return "Approval is required.", ""
+    if approval_required and decision_ids:
+        labels = [ACTION_CATALOG[action_id]["label"] for action_id in decision_ids]
+        offered = " and ".join(labels)
+        verb = "is the governed action returned" if len(labels) == 1 else "are the governed actions returned"
+        closing = "This action does not publish." if len(labels) == 1 else "These actions do not publish."
+        return (
+            "A human decision is waiting.",
+            f"Approve is not available on this read. {offered} {verb}. {closing}",
+        )
+    if approval_required:
+        return (
+            "A human decision is waiting.",
+            "Approve, Reject, and Request changes were not permitted by this read.",
+        )
+    return "A decision action is permitted.", ""
+
+
+def _pipeline(stage: str, publication_tone: str, qa_status: str = "") -> list[dict[str, str]]:
     current = STAGE_TO_STEP.get(stage.strip().lower())
     steps: list[dict[str, str]] = []
     for step_id, label in PIPELINE_STEPS:
         if stage.strip().lower() == "failed" or current is None:
             state = "idle"
-            state_label = "Not current"
+            state_label = _idle_phase_label(step_id, qa_status)
         elif step_id == current and publication_tone == "verified" and step_id == "verification":
             state = "verified"
             state_label = "Verified"
@@ -256,7 +285,7 @@ def _pipeline(stage: str, publication_tone: str) -> list[dict[str, str]]:
             state_label = "Current"
         else:
             state = "idle"
-            state_label = "Not current"
+            state_label = _idle_phase_label(step_id, qa_status)
         steps.append(
             {
                 "id": step_id,
@@ -266,6 +295,12 @@ def _pipeline(stage: str, publication_tone: str) -> list[dict[str, str]]:
             }
         )
     return steps
+
+
+def _idle_phase_label(step_id: str, qa_status: str) -> str:
+    if step_id == "qa" and qa_status == "PASS":
+        return "Passed — not the active phase"
+    return "Not the active phase"
 
 
 def _allowed_actions(value: Any) -> list[str]:

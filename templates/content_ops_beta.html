@@ -269,7 +269,7 @@
           </li>
           {% endfor %}
         </ol>
-        <p class="cop-note">Position shows the reported stage only. Earlier steps are not marked complete.</p>
+        <p class="cop-note">The highlighted phase is the one this read reports as current. Other phases are not marked complete or failed. A passed QA result stays visible on the QA step and on the QA panel.</p>
       </section>
 
       <section class="card cop-card" aria-labelledby="cop-publication-title" data-testid="publication-panel" data-tone="{{ view.publication.tone }}" data-publication-truth="{{ view.publication.truth }}" data-verification-status="{{ view.publication.verification }}">
@@ -331,9 +331,12 @@
       <section class="card cop-card{% if view.decision_waiting %} cop-decision{% endif %}" aria-labelledby="cop-decision-title" data-testid="decision-queue">
         <h2 id="cop-decision-title" class="card-title">Human decision</h2>
         {% if view.decision_waiting %}
-        <p data-testid="decision-required">{% if view.approval_required %}Approval is required.{% else %}A decision action is permitted.{% endif %}</p>
+        <p data-testid="decision-required">{{ view.decision_headline }}</p>
+        {% if view.decision_limited %}
+        <p class="cop-callout" data-testid="approve-unavailable">{{ view.decision_limited }}</p>
+        {% endif %}
         {% if view.decision_blocked %}
-        <p class="cop-callout" data-testid="decision-blocked">Approval is required, but this read did not permit Approve, Reject, or Request changes.</p>
+        <p class="cop-callout" data-testid="decision-blocked">A human decision is waiting, but this read did not permit Approve, Reject, or Request changes.</p>
         {% endif %}
         {% if view.decision_actions %}
         <div class="cop-actions" aria-label="Human decision actions">
