@@ -235,7 +235,7 @@
   </section>
   {% endif %}
 
-  {% if surface.sources %}
+  {% if surface.sources and surface.workspace == 'System' %}
   <p class="os-sources">Sources: {{ surface.sources | join(' · ') }}</p>
   {% endif %}
 </article>

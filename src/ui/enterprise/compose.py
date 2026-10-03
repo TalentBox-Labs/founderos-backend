@@ -117,6 +117,7 @@ def _current_week_publication() -> dict[str, Any]:
             "status": str(publication.get("status") or ""),
             "url": str(publication.get("url") or ""),
             "proven": bool(publication.get("show_success_link")),
+            "attention": _content_attention(presented),
         }
     if state == "empty":
         return {
@@ -132,6 +133,69 @@ def _current_week_publication() -> dict[str, Any]:
             or "Current-week publication read failed. No substitute was loaded."
         ),
     }
+
+
+def _no_content_attention(kind: str) -> dict[str, Any]:
+    return {
+        "required": False,
+        "kind": kind,
+        "week_id": "",
+        "summary": "",
+        "href": "",
+        "actions": [],
+        "approve_offered": False,
+    }
+
+
+def _content_attention(presented: dict[str, Any]) -> dict[str, Any]:
+    """Founder attention from the live current-week read.
+
+    Publication truth stays informational. A non-verified token is not a decision.
+    """
+    actions = presented.get("decision_actions")
+    if not isinstance(actions, list):
+        actions = []
+    labels: list[str] = []
+    approve_offered = False
+    for action in actions:
+        if not isinstance(action, dict):
+            continue
+        label = action.get("label")
+        if label:
+            labels.append(str(label))
+        if action.get("id") == "approve":
+            approve_offered = True
+    if presented.get("decision_waiting") is not True:
+        return _no_content_attention("INFORMATIONAL")
+    week_id = str(presented.get("week_id") or "")
+    summary = str(
+        presented.get("attention")
+        or presented.get("next_action")
+        or "A human decision is waiting on the current week."
+    )
+    return {
+        "required": True,
+        "kind": "ACTION_REQUIRED",
+        "week_id": week_id,
+        "summary": summary,
+        "href": "/content-ops",
+        "actions": labels,
+        "approve_offered": approve_offered,
+    }
+
+
+def _founder_content_attention(publication: dict[str, Any]) -> dict[str, Any]:
+    attention = publication.get("attention")
+    if (
+        isinstance(attention, dict)
+        and attention.get("required") is True
+        and attention.get("kind") == "ACTION_REQUIRED"
+        and attention.get("week_id")
+    ):
+        return attention
+    if publication.get("ok") and publication.get("state") == "ready":
+        return _no_content_attention("INFORMATIONAL")
+    return _no_content_attention("UNKNOWN")
 
 
 def _replace_verified_kpi(view: dict[str, Any], value: str, why: str) -> None:
@@ -504,6 +568,19 @@ def build_home(**ctx: Any) -> dict[str, Any]:
     pipeline = _dict_get(snapshot, "pipeline", {})
     recent = snapshot.get("recent_activity")
     publication = _current_week_publication()
+    content_attention = _founder_content_attention(publication)
+    founder_required = _dict_get(loop, "requires_founder", None)
+    try:
+        founder_count = int(founder_required)
+    except (TypeError, ValueError):
+        founder_count = None
+    content_decision_count = 1 if content_attention.get("required") else 0
+    if founder_count is None and content_decision_count:
+        needs_decision_value = str(content_decision_count)
+    elif founder_count is None:
+        needs_decision_value = "—"
+    else:
+        needs_decision_value = str(founder_count + content_decision_count)
     if publication.get("ok") and publication.get("proven") is True:
         publication_value = "verified"
         publication_why = "Authoritative current-week read returned verified publication."
@@ -519,11 +596,11 @@ def build_home(**ctx: Any) -> dict[str, Any]:
     view["kpis"] = [
         _kpi(
             "Needs a decision",
-            str(_dict_get(loop, "requires_founder", "—")),
-            "Items the command read marked as requiring a founder.",
+            needs_decision_value,
+            "Command-read items that require a founder, plus a current-week human decision when that read says one is waiting.",
             action_href="#decision-queue",
             action_label="Review decisions",
-            source="DERIVED_FROM_LIVE_API",
+            source="LIVE_API" if content_decision_count else "DERIVED_FROM_LIVE_API",
         ),
         _kpi(
             "Recent activity rows",
@@ -544,7 +621,7 @@ def build_home(**ctx: Any) -> dict[str, Any]:
         _kpi(
             "Approvals waiting",
             str(snapshot.get("pending_approval_count", "—")),
-            "Pending governed approvals. Opening the inbox does not approve them.",
+            "Pending items in the approvals inbox. A current-week editorial decision stays on the week read and is not copied into this inbox.",
             action_href="/pending-approvals",
             action_label="Open Approvals",
             source="LIVE_API",
@@ -617,12 +694,58 @@ def build_home(**ctx: Any) -> dict[str, Any]:
                 "audit_href": "/activity",
             }
         )
+    if content_attention.get("required"):
+        week_id = str(content_attention.get("week_id") or "")
+        action_labels = content_attention.get("actions") or []
+        offered = ", ".join(str(label) for label in action_labels) or "None were returned"
+        if content_attention.get("approve_offered"):
+            available = f"Approve is available with: {offered}."
+        else:
+            available = (
+                f"Approve is not available on this read. Governed actions returned: {offered}."
+            )
+        decisions.insert(
+            0,
+            {
+                "severity": "warning",
+                "severity_label": "Action required",
+                "domain": "content",
+                "entity": week_id,
+                "title": f"{week_id} needs a human decision",
+                "reason": str(content_attention.get("summary") or "A human decision is waiting."),
+                "evidence": (
+                    available
+                    + " This is the current-week editorial read. It is not an approvals-inbox item and it is not publication."
+                ),
+                "actions": [
+                    {
+                        "label": f"Open {week_id}",
+                        "href": "/content-ops",
+                        "state": "permitted",
+                        "detail": "Opens the governed week read. It does not approve or publish.",
+                    }
+                ],
+                "blocked": "",
+                "authority": "Current-week editorial read",
+                "audit_href": "/content-ops",
+            },
+        )
     view["decisions"] = decisions
     if not decisions:
         view["alerts"].append(
             _alert("info", "Decision queue empty", "The command read returned no decision items.")
         )
-    view["next_steps"] = [
+    view["next_steps"] = []
+    if content_attention.get("required"):
+        week_id = str(content_attention.get("week_id") or "the current week")
+        view["next_steps"].append(
+            {
+                "href": "/content-ops",
+                "label": f"Review {week_id}",
+                "detail": "The current-week read says a human decision is waiting. Opening it does not approve or publish.",
+            }
+        )
+    view["next_steps"].extend([
         {
             "href": "/command",
             "label": "Command Center",
@@ -643,13 +766,16 @@ def build_home(**ctx: Any) -> dict[str, Any]:
             "label": "System",
             "detail": "Integrations, agent registry, governance, and health.",
         },
-    ]
+    ])
     approval_count = snapshot.get("pending_approval_count") or 0
     try:
         approvals_waiting = int(approval_count)
     except (TypeError, ValueError):
         approvals_waiting = 0
-    if approvals_waiting:
+    if content_attention.get("required"):
+        week_id = str(content_attention.get("week_id") or "the current week")
+        view["primary_action"] = {"href": "/content-ops", "label": f"Review {week_id}"}
+    elif approvals_waiting:
         view["primary_action"] = {"href": "/pending-approvals", "label": "Review approvals"}
     elif decisions:
         view["primary_action"] = {"href": "#decision-queue", "label": "Review decisions"}
@@ -772,12 +898,11 @@ def build_revenue_companies(**_ctx: Any) -> dict[str, Any]:
         active_page="revenue_companies",
         read_state="gap",
     )
-    view["gaps"] = [API_GAPS[0]]
     view["alerts"] = [
         _alert(
             "blocked",
             "Companies are not loaded",
-            "No records are shown. Company names that appear on contacts stay on the Contacts workspace and are not a companies directory.",
+            "This workspace has no organization-scoped company list, so no company rows are shown. Names on contacts stay on Contacts. The gap is listed under System → Governance.",
         )
     ]
     view["sources"] = ["API_GAP"]
@@ -795,7 +920,7 @@ def build_revenue_deals(**ctx: Any) -> dict[str, Any]:
         workspace="Sales",
         title="Deals",
         section="deals",
-        purpose="Deals returned by the organization-scoped operator flow.",
+        purpose="Deals recorded for this organization.",
         tabs=_revenue_tabs("deals"),
         active_page="revenue_deals",
         read_state="ok",
@@ -1763,13 +1888,12 @@ def build_operations_automations(**_ctx: Any) -> dict[str, Any]:
         active_page="operations_automations",
         read_state="gap",
     )
-    view["gaps"] = [API_GAPS[3]]
     view["sources"] = ["API_GAP"]
     view["alerts"] = [
         _alert(
             "blocked",
-            "Automations not listed",
-            "GET /api/v1/automation/workflows exists and is process-global. Rendering it here could cross tenants, so no workflow rows are shown.",
+            "Workflows are not listed",
+            "The workflow list is not limited to this organization, so no workflow rows are shown. That avoids mixing another workspace's automations into this one. The limitation is recorded under System → Governance.",
         )
     ]
     view["table"] = _table(
