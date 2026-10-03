@@ -262,8 +262,9 @@ def test_tenant_a_can_view_own_contact(
 def test_nav_includes_founder_shell(client: TestClient) -> None:
     r = client.get("/login")
     assert r.status_code == 200
-    assert 'href="/command"' in r.text
-    assert "Command Center" in r.text
+    assert 'href="/home"' in r.text
+    assert ">Home<" in r.text
+    assert ">Command Center<" not in r.text
 
 
 def test_meeting_interest_display_only(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:

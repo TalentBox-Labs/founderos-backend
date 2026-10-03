@@ -717,12 +717,14 @@ def test_organization_visibility_when_tenant_present(
 
 def test_nav_primary_product_language(client: TestClient) -> None:
     r = client.get("/login")
-    assert 'href="/command"' in r.text
-    assert 'href="/demand"' in r.text
+    assert 'href="/home"' in r.text
+    assert 'href="/os/revenue/contacts"' in r.text
+    assert 'href="/os/marketing/campaigns"' in r.text
     assert 'href="/pending-approvals"' in r.text
-    assert 'href="/activity"' in r.text
-    assert 'href="/operator"' in r.text
-    assert "Command Center" in r.text
+    assert 'href="/os/operations/activity"' in r.text
+    assert 'href="/os/system"' in r.text
+    assert ">Command Center<" not in r.text
+    assert ">Executive Cockpit<" not in r.text
     assert "TenantContext" not in r.text
     assert "AgentActionLog" not in r.text
     assert "MC04.5" not in r.text
