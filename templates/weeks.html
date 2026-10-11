@@ -53,7 +53,9 @@
           </td>
           <td>
             {% set s = row.status | lower %}
-            {% if "pass" in s or "complete" in s or "published" in s %}
+            {% if "published" in s %}
+              <span class="pill gray" title="Tracker status. Not verified publication.">{{ row.status }}</span>
+            {% elif "pass" in s or "complete" in s %}
               <span class="pill green">{{ row.status }}</span>
             {% elif "review" in s or "progress" in s %}
               <span class="pill amber">{{ row.status }}</span>

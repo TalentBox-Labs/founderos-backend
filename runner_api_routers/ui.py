@@ -60,6 +60,8 @@ from runner_api_routers.identity import founder_login_redirect, identity_from_re
 from src.ui.content_ops_beta.live_reader import envelope_for_status
 from src.ui.content_ops_beta.presenter import present_content_ops_read
 from src.ui.content_ops_beta.reader import fixture_mode, get_content_ops_reader
+from src.ui.enterprise.catalog import resolve_surface
+from src.ui.enterprise.compose import compose_surface
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["ui"])
@@ -957,6 +959,50 @@ def page_analytics(request: Request) -> HTMLResponse | RedirectResponse:
             "active_week": runtime.get("active_week", "—"),
         },
     )
+
+
+
+
+def _render_enterprise(request: Request, surface_id: str) -> HTMLResponse | RedirectResponse:
+    """Read-only enterprise workspace. Does not grant mutation authority."""
+    redirected = founder_login_redirect(request)
+    if redirected is not None:
+        return redirected
+    ctx = _founder_page_context(request, active_page="enterprise")
+    surface = compose_surface(
+        surface_id,
+        organization_id=ctx.get("org_id"),
+        identity=ctx.get("identity"),
+        tenant=ctx.get("tenant"),
+        active_week=str(ctx.get("active_week") or "—"),
+    )
+    ctx["active_page"] = surface["active_page"]
+    ctx["surface"] = surface
+    return templates.TemplateResponse(
+        request=request,
+        name="enterprise_surface.html",
+        context=ctx,
+    )
+
+
+@router.get("/home", response_class=HTMLResponse, response_model=None)
+def page_founder_home(request: Request) -> HTMLResponse | RedirectResponse:
+    """Founder Home — decisions and exceptions from the command read."""
+    return _render_enterprise(request, "home")
+
+
+@router.get("/os/{workspace}", response_class=HTMLResponse, response_model=None)
+@router.get("/os/{workspace}/{section}", response_class=HTMLResponse, response_model=None)
+def page_enterprise_workspace(
+    workspace: str,
+    request: Request,
+    section: str = "overview",
+) -> HTMLResponse | RedirectResponse:
+    """Enterprise workspace section. Unknown sections 404. No fixture fallback."""
+    surface_id = resolve_surface(workspace, section)
+    if surface_id is None:
+        raise HTTPException(status_code=404, detail="Unknown workspace")
+    return _render_enterprise(request, surface_id)
 
 
 @router.get("/health")

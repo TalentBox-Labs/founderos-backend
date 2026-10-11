@@ -1,0 +1,246 @@
+{% extends "base.html" %}
+{% block title %}{{ surface.title }} — Founder OS{% endblock %}
+{% block topbar_title %}{{ surface.workspace }}{% endblock %}
+{% block topbar_meta %}{{ surface.title }}{% endblock %}
+
+{% block topbar_right %}
+  {% if surface.primary_action %}
+  <a class="btn btn-primary btn-sm" href="{{ surface.primary_action.href }}" data-testid="os-primary-action">{{ surface.primary_action.label }}</a>
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+<article class="os-surface" data-testid="os-surface" data-surface="{{ surface.surface_id }}" data-read-state="{{ surface.read_state }}">
+  <header class="os-page-head" data-testid="os-page-header">
+    <div>
+      <p class="os-crumb">
+        {% for crumb in surface.breadcrumb %}
+          {% if not loop.first %}<span aria-hidden="true"> / </span>{% endif %}
+          <span>{{ crumb }}</span>
+        {% endfor %}
+      </p>
+      <h1>{{ surface.title }}</h1>
+      <p class="os-purpose">{{ surface.purpose }}</p>
+    </div>
+    <p class="os-read-state" data-testid="os-read-state">
+      {% if surface.read_state == 'ok' %}
+      <span class="os-status os-status-success">Read succeeded</span>
+      {% elif surface.read_state == 'error' %}
+      <span class="os-status os-status-danger">Read failed</span>
+      {% elif surface.read_state == 'unavailable' %}
+      <span class="os-status os-status-warning">Unavailable</span>
+      {% elif surface.read_state == 'gap' %}
+      <span class="os-status os-status-blocked">Read missing</span>
+      {% else %}
+      <span class="os-status os-status-unknown">{{ surface.read_state }}</span>
+      {% endif %}
+    </p>
+  </header>
+
+  {% if surface.tabs %}
+  <div class="os-tabs" role="tablist" aria-label="{{ surface.workspace }}">
+    {% for tab in surface.tabs %}
+    <a role="tab" class="os-tab {% if tab.current == 'true' %}is-current{% endif %}" href="{{ tab.href }}" {% if tab.current == 'true' %}aria-current="page"{% endif %}>{{ tab.label }}</a>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if surface.client_filter %}
+  <div class="os-filter">
+    <label for="os-filter">Filter this table</label>
+    <input id="os-filter" type="search" data-testid="os-table-filter" placeholder="Filter visible rows" autocomplete="off" />
+  </div>
+  {% endif %}
+
+  {% for alert in surface.alerts %}
+  <div class="os-alert os-alert-{{ alert.tone }}" role="status" data-testid="os-alert">
+    <strong>{{ alert.title }}</strong>
+    <p>{{ alert.body }}</p>
+  </div>
+  {% endfor %}
+
+  {% if surface.hermes %}
+  <section class="os-hermes" data-testid="hermes-status" data-configured="{{ 'true' if surface.hermes.configured else 'false' }}" data-authority="{{ surface.hermes.authority }}">
+    <h2>Hermes</h2>
+    <p><span class="os-status os-status-blocked">{{ surface.hermes.headline }}</span></p>
+    <p>{{ surface.hermes.detail }}</p>
+  </section>
+  {% endif %}
+
+  {% if surface.kpis %}
+  <section class="os-kpis" aria-label="Operating signals">
+    {% for kpi in surface.kpis %}
+    <article class="os-kpi" data-source="{{ kpi.source }}">
+      <h2>{{ kpi.label }}</h2>
+      <p class="os-kpi-value">{{ kpi.value }}</p>
+      <p class="os-kpi-why">{{ kpi.why }}</p>
+      {% if kpi.action_href %}
+      <a href="{{ kpi.action_href }}">{{ kpi.action_label }}</a>
+      {% endif %}
+    </article>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if surface.decisions %}
+  <section aria-label="Decision queue" data-testid="decision-queue">
+    <h2 class="os-section-title">Decision queue</h2>
+    {% for card in surface.decisions %}
+    <article class="os-decision" data-testid="decision-card" data-severity="{{ card.severity }}">
+      <header>
+        <span class="os-status os-status-{{ card.severity }}">{{ card.severity_label }}</span>
+        <span class="os-domain">{{ card.domain }}</span>
+      </header>
+      <h3>{{ card.title }}</h3>
+      <dl>
+        <div><dt>Entity</dt><dd>{{ card.entity }}</dd></div>
+        {% if card.reason %}<div><dt>Reason</dt><dd>{{ card.reason }}</dd></div>{% endif %}
+        {% if card.evidence %}<div><dt>Evidence</dt><dd>{{ card.evidence }}</dd></div>{% endif %}
+        <div><dt>Authority</dt><dd>{{ card.authority }}</dd></div>
+      </dl>
+      {% if card.blocked %}<p class="os-blocked">{{ card.blocked }}</p>{% endif %}
+      <div class="os-actions">
+        {% for action in card.actions %}
+        <a class="btn btn-ghost btn-sm" href="{{ action.href }}">{{ action.label }}</a>
+        {% if action.detail %}<span class="os-action-detail">{{ action.detail }}</span>{% endif %}
+        {% endfor %}
+        <a class="btn btn-ghost btn-sm" href="{{ card.audit_href }}">Audit</a>
+      </div>
+    </article>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if surface.pipeline is not none %}
+  <section class="os-pipeline" aria-label="Pipeline" data-testid="os-pipeline">
+    <h2 class="os-section-title">Pipeline</h2>
+    {% if surface.pipeline %}
+    <ol>
+      {% for stage in surface.pipeline %}
+      <li>
+        <span class="os-stage-name">{{ stage.stage }}</span>
+        <span>{{ stage.count }} open</span>
+        <span>{{ stage.value }}</span>
+      </li>
+      {% endfor %}
+    </ol>
+    {% else %}
+    <p class="os-empty">No open stages were returned.</p>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  {% if surface.table %}
+  <section class="os-table-section">
+    <div class="table-wrap">
+      <table class="os-table" data-testid="os-table">
+        <caption>{{ surface.table.caption }}</caption>
+        <thead>
+          <tr>
+            {% for column in surface.table.columns %}
+            <th scope="col" data-priority="{{ column.priority }}">{{ column.label }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in surface.table.rows %}
+          <tr>
+            {% for column in surface.table.columns %}
+            <td data-priority="{{ column.priority }}">
+              {% if loop.first and row._href %}
+              <a href="{{ row._href }}">{{ row[column.key] }}</a>
+              {% else %}
+              {{ row[column.key] }}
+              {% endif %}
+            </td>
+            {% endfor %}
+          </tr>
+          {% else %}
+          <tr>
+            <td class="os-empty" colspan="{{ surface.table.columns|length }}">{{ surface.table.empty }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if surface.design_system %}
+  <section class="os-specimens" data-testid="design-specimens" aria-label="Component specimens">
+    <h2 class="os-section-title">Foundations</h2>
+    <p>Dark-first semantic tokens. Meaning is also written in text.</p>
+    <div class="os-swatches">
+      <span class="os-swatch" data-token="surface">surface</span>
+      <span class="os-swatch is-raised" data-token="surface-raised">surface-raised</span>
+      <span class="os-status os-status-success">success</span>
+      <span class="os-status os-status-warning">warning</span>
+      <span class="os-status os-status-danger">danger</span>
+      <span class="os-status os-status-info">info</span>
+      <span class="os-status os-status-blocked">blocked</span>
+      <span class="os-status os-status-unknown">unknown</span>
+      <span class="os-status os-status-disabled">disabled</span>
+    </div>
+    <h2 class="os-section-title">Components</h2>
+    <div class="os-specimen-row">
+      <button type="button" class="btn btn-primary">Primary</button>
+      <button type="button" class="btn btn-ghost">Secondary</button>
+      <button type="button" class="btn btn-ghost" disabled>Disabled</button>
+      <button type="button" class="os-icon-btn" aria-label="More">…</button>
+    </div>
+    <div class="os-specimen-row">
+      <label>Input <input type="text" value="" placeholder="Labelled field" /></label>
+      <label>Search <input type="search" placeholder="Search" /></label>
+      <label>Select
+        <select aria-label="Specimen select">
+          <option>Open</option>
+          <option>Blocked</option>
+        </select>
+      </label>
+    </div>
+    <h2 class="os-section-title">States</h2>
+    <div class="os-alert os-alert-info" role="status"><strong>Empty</strong><p>No rows were returned by the read.</p></div>
+    <div class="os-loading" aria-hidden="true"><span></span><span></span><span></span></div>
+    <p class="os-purpose">Loading specimen. Product pages render the server read directly and do not substitute a skeleton for missing data.</p>
+    <div class="os-alert os-alert-danger" role="alert"><strong>Error</strong><p>The read failed. No substitute data was loaded.</p></div>
+    <div class="os-permission" role="note"><strong>Permission</strong><p>A human session is required. Anonymous and service credentials are not granted this action.</p></div>
+    <div class="os-drawer" role="region" aria-label="Audit specimen">
+      <h3>Audit</h3>
+      <p>Actor, action, and time come from the activity read. This specimen is not a record.</p>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if surface.gaps %}
+  <section data-testid="os-gaps">
+    <h2 class="os-section-title">Unresolved reads</h2>
+    <ul>
+      {% for gap in surface.gaps %}
+      <li>{{ gap }}</li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  {% if surface.sources %}
+  <p class="os-sources">Sources: {{ surface.sources | join(' · ') }}</p>
+  {% endif %}
+</article>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  var input = document.getElementById('os-filter');
+  if (!input) return;
+  var rows = document.querySelectorAll('[data-testid="os-table"] tbody tr');
+  input.addEventListener('input', function () {
+    var query = input.value.trim().toLowerCase();
+    rows.forEach(function (row) {
+      var text = row.textContent.toLowerCase();
+      row.hidden = query.length > 0 && text.indexOf(query) === -1;
+    });
+  });
+})();
+</script>
+{% endblock %}
