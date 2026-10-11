@@ -86,9 +86,8 @@ def test_shell_routes_render_without_mock_fallback(cms_client: TestClient) -> No
 
 def test_companies_workspace_states_the_gap(cms_client: TestClient) -> None:
     html = cms_client.get("/os/revenue/companies").text
-    assert 'data-read-state="gap"' in html
-    assert "No companies endpoint is available" in html
-    assert "no organization-scoped company list" in html
+    assert 'data-read-state="unavailable"' in html
+    assert "No organization is selected, so no company rows are shown." in html
     assert "API_GAP" not in html
     governance = cms_client.get("/os/system/governance").text
     assert API_GAPS[0] in governance

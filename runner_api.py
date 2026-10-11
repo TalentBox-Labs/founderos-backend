@@ -354,6 +354,9 @@ def _migrate_missing_columns() -> None:
         "deals": [
             ("organization_id", "VARCHAR(36)"),
         ],
+        "companies": [
+            ("organization_id", "VARCHAR(36)"),
+        ],
         "agent_action_log": [
             ("organization_id", "VARCHAR(36)"),
         ],

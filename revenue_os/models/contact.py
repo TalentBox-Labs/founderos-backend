@@ -76,6 +76,8 @@ class Company(Base):
     logo_url = Column(String(500))
     tags = Column(Text)
     notes = Column(Text)
+    # NULL stays withheld. A companies list is shown only for this organization.
+    organization_id = Column(UUID(as_uuid=True), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

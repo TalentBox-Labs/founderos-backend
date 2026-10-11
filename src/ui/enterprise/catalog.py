@@ -10,7 +10,7 @@ from __future__ import annotations
 # Runner UI does not mount a tenant-scoped companies collection.
 # revenue_os /companies is a different app and is not organization-filtered.
 API_GAPS: tuple[str, ...] = (
-    "API_GAP: no tenant-scoped companies list on the Founder OS UI app (revenue_os GET /companies is not mounted here and is not organization-filtered)",
+    "Companies without organization_id stay withheld. The companies table lists only the signed-in organization.",
     "API_GAP: tracker rows and publishing jobs are not the canonical current-week publication-truth read",
     "API_GAP: no joined evidence record for content → campaign → demand → contact → opportunity → revenue",
     "API_GAP: no tenant-scoped automation workflow list (GET /api/v1/automation/workflows is process-global)",
@@ -24,7 +24,7 @@ API_GAPS: tuple[str, ...] = (
 
 BACKEND_DEPENDENCIES: tuple[str, ...] = (
     "BACKEND_DEPENDENCY_REQUIRED: none for the current-week publication-truth reader; the live reader is already the default",
-    "BACKEND_DEPENDENCY_REQUIRED: tenant-scoped companies list before a Companies table can render records",
+    "BACKEND_DEPENDENCY_REQUIRED: none for companies that already carry organization_id",
     "BACKEND_DEPENDENCY_REQUIRED: tenant-scoped relationship graph before cross-workspace funnel claims",
 )
 

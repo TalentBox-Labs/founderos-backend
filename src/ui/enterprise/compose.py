@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
+import uuid
 from typing import Any
 
 from sqlalchemy import text
@@ -15,6 +16,7 @@ from sqlalchemy import text
 from revenue_os.agents.orchestration import AgentCoordinator
 from revenue_os.database import SessionLocal
 from revenue_os.models.activity import Activity
+from revenue_os.models.contact import Company
 from revenue_os.services.credentials_vault import list_configured_connectors
 from revenue_os.services.deal_automation_service import get_pipeline_health
 from revenue_os.services.founder_ui_read_model import (
@@ -809,11 +811,19 @@ def build_revenue_overview(**ctx: Any) -> dict[str, Any]:
     contacts = data.get("contacts") or []
     deals = data.get("deals") or []
     pending = data.get("pending_demands") or []
+    company_count = _tenant_company_count(ctx.get("organization_id"))
     view["kpis"] = [
         _kpi("Demand waiting", str(len(pending)), "Pending qualified-demand handoffs.", action_href="/demand", action_label="Review demand", source="DERIVED_FROM_LIVE_API"),
         _kpi("Contacts", str(len(contacts)), "People in this organization.", action_href="/os/revenue/contacts", action_label="Open contacts", source="DERIVED_FROM_LIVE_API"),
         _kpi("Deals", str(len(deals)), "Deals returned for this organization.", action_href="/os/revenue/deals", action_label="Open deals", source="DERIVED_FROM_LIVE_API"),
-        _kpi("Companies", "Unknown", "No tenant-scoped companies list is mounted.", action_href="/os/revenue/companies", action_label="See the gap", source="API_GAP"),
+        _kpi(
+            "Companies",
+            str(company_count) if company_count is not None else "Unknown",
+            "Companies recorded for this organization. Rows without an organization stay hidden.",
+            action_href="/os/revenue/companies",
+            action_label="Open companies",
+            source="DERIVED_FROM_LIVE_API" if company_count is not None else "API_GAP",
+        ),
     ]
     items = attention.get("items") or []
     view["table"] = _table(
@@ -832,7 +842,6 @@ def build_revenue_overview(**ctx: Any) -> dict[str, Any]:
         "No attention items were returned.",
     )
     view["primary_action"] = {"href": "/operator", "label": "Open revenue workflow"}
-    view["gaps"] = [API_GAPS[0]]
     return view
 
 
@@ -888,29 +897,71 @@ def build_revenue_contacts(**ctx: Any) -> dict[str, Any]:
     return view
 
 
-def build_revenue_companies(**_ctx: Any) -> dict[str, Any]:
+def _tenant_company_count(organization_id: str | None) -> int | None:
+    rows = _tenant_companies(organization_id)
+    if rows is None:
+        return None
+    return len(rows)
+
+
+def _tenant_companies(organization_id: str | None) -> list[dict[str, str]] | None:
+    """Companies for this organization. NULL organization_id rows stay hidden."""
+    if not organization_id:
+        return None
+    try:
+        org_uuid = uuid.UUID(str(organization_id))
+    except ValueError:
+        return None
+    db = SessionLocal()
+    try:
+        found = (
+            db.query(Company)
+            .filter(Company.organization_id == org_uuid)
+            .order_by(Company.name.asc())
+            .all()
+        )
+        return [
+            {
+                "name": str(company.name or "—"),
+                "domain": str(company.domain or "—"),
+                "notes": str(company.notes or ""),
+            }
+            for company in found
+        ]
+    finally:
+        db.close()
+
+
+def build_revenue_companies(**ctx: Any) -> dict[str, Any]:
     view = _base(
         workspace="Sales",
         title="Companies",
         section="companies",
-        purpose="A companies workspace needs a tenant-scoped list. That read is not available.",
+        purpose="Companies recorded for this organization.",
         tabs=_revenue_tabs("companies"),
         active_page="revenue_companies",
-        read_state="gap",
+        read_state="ok",
     )
-    view["alerts"] = [
-        _alert(
-            "blocked",
-            "Companies are not loaded",
-            "This workspace has no organization-scoped company list, so no company rows are shown. Names on contacts stay on Contacts. The gap is listed under System → Governance.",
-        )
-    ]
-    view["sources"] = ["API_GAP"]
+    rows = _tenant_companies(ctx.get("organization_id"))
+    if rows is None:
+        view["read_state"] = "unavailable"
+        view["alerts"] = [
+            _alert(
+                "warning",
+                "Companies are not loaded",
+                "No organization is selected, so no company rows are shown.",
+            )
+        ]
+        rows = []
+    view["sources"] = ["DERIVED_FROM_LIVE_API: companies.organization_id"]
     view["table"] = _table(
         "Companies",
-        [{"key": "name", "label": "Company", "priority": "high"}],
-        [],
-        "No companies endpoint is available for this workspace.",
+        [
+            {"key": "name", "label": "Company", "priority": "high"},
+            {"key": "domain", "label": "Domain", "priority": "medium"},
+        ],
+        rows,
+        "No companies are recorded for this organization.",
     )
     return view
 
