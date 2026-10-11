@@ -1,7 +1,7 @@
 # ── Stage 1: build the React CRM frontend ────────────────────────────────────
 # frontend/ is a git submodule (github.com/TalentBox-Labs/founderos-frontend) —
 # the build context must have it checked out: `git submodule update --init`.
-FROM node:20-slim AS frontend-build
+FROM node:24-slim AS frontend-build
 
 WORKDIR /build
 COPY frontend/package.json frontend/package-lock.json ./
