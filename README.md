@@ -14,8 +14,8 @@ A content management and scheduling system for technical hiring content automati
 
 1. **Clone and install dependencies:**
    ```bash
-   git clone <repo>
-   cd "S&M - CSM OS"
+   git clone --recurse-submodules https://github.com/TalentBox-Labs/founderos-backend.git
+   cd founderos-backend
    python -m venv .venv
    source .venv/bin/activate
    pip install -r requirements.txt
