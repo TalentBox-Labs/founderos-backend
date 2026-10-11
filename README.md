@@ -1,5 +1,7 @@
 # FounderOs
 
+For the current repositories, local setup, CI and application release procedure, see [Development and release baseline](docs/operations/DEVELOPMENT_AND_RELEASE.md).
+
 A content management and scheduling system for technical hiring content automation.
 
 ## Quick Start
